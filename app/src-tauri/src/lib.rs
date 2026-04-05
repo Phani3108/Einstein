@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::State;
-use vault::{ActionItem, CalendarEvent, GraphData, Note, NoteVersion, TagInfo, TemplateInfo, Vault};
+use vault::{ActionItem, CalendarEvent, Decision, GraphData, Note, NoteAssociation, NoteMetadata, NoteVersion, Person, Project, TagInfo, TemplateInfo, Vault};
 
 struct VaultState(Mutex<Option<Vault>>);
 
@@ -235,6 +235,170 @@ fn get_calendar_events(start_date: String, end_date: String, state: State<VaultS
     vault.get_calendar_events(&start_date, &end_date)
 }
 
+// --- Projects ---
+
+#[tauri::command]
+fn create_project(title: String, description: String, category: String, goal: String, deadline: Option<String>, state: State<VaultState>) -> Result<Project, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.create_project(&title, &description, &category, &goal, deadline.as_deref())
+}
+
+#[tauri::command]
+fn update_project(id: String, title: Option<String>, description: Option<String>, status: Option<String>, category: Option<String>, goal: Option<String>, deadline: Option<String>, state: State<VaultState>) -> Result<Project, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.update_project(&id, title.as_deref(), description.as_deref(), status.as_deref(), category.as_deref(), goal.as_deref(), deadline.as_deref())
+}
+
+#[tauri::command]
+fn list_projects(status_filter: Option<String>, state: State<VaultState>) -> Result<Vec<Project>, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.list_projects(status_filter.as_deref())
+}
+
+#[tauri::command]
+fn get_project(id: String, state: State<VaultState>) -> Result<Project, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.get_project(&id)
+}
+
+#[tauri::command]
+fn delete_project(id: String, state: State<VaultState>) -> Result<(), String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.delete_project(&id)
+}
+
+// --- People ---
+
+#[tauri::command]
+fn create_person(name: String, role: String, organization: String, email: String, notes: String, state: State<VaultState>) -> Result<Person, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.create_person(&name, &role, &organization, &email, &notes)
+}
+
+#[tauri::command]
+fn update_person(id: String, name: Option<String>, role: Option<String>, organization: Option<String>, email: Option<String>, notes: Option<String>, last_contact: Option<String>, state: State<VaultState>) -> Result<Person, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.update_person(&id, name.as_deref(), role.as_deref(), organization.as_deref(), email.as_deref(), notes.as_deref(), last_contact.as_deref())
+}
+
+#[tauri::command]
+fn list_people(state: State<VaultState>) -> Result<Vec<Person>, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.list_people()
+}
+
+#[tauri::command]
+fn get_person(id: String, state: State<VaultState>) -> Result<Person, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.get_person(&id)
+}
+
+#[tauri::command]
+fn delete_person(id: String, state: State<VaultState>) -> Result<(), String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.delete_person(&id)
+}
+
+#[tauri::command]
+fn search_people(query: String, state: State<VaultState>) -> Result<Vec<Person>, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.search_people(&query)
+}
+
+// --- Decisions ---
+
+#[tauri::command]
+fn create_decision(title: String, description: String, reasoning: String, alternatives: String, revisit_date: Option<String>, state: State<VaultState>) -> Result<Decision, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.create_decision(&title, &description, &reasoning, &alternatives, revisit_date.as_deref())
+}
+
+#[tauri::command]
+fn update_decision(id: String, title: Option<String>, description: Option<String>, reasoning: Option<String>, alternatives: Option<String>, status: Option<String>, revisit_date: Option<String>, state: State<VaultState>) -> Result<Decision, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.update_decision(&id, title.as_deref(), description.as_deref(), reasoning.as_deref(), alternatives.as_deref(), status.as_deref(), revisit_date.as_deref())
+}
+
+#[tauri::command]
+fn list_decisions(status_filter: Option<String>, state: State<VaultState>) -> Result<Vec<Decision>, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.list_decisions(status_filter.as_deref())
+}
+
+#[tauri::command]
+fn get_decision(id: String, state: State<VaultState>) -> Result<Decision, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.get_decision(&id)
+}
+
+// --- Associations ---
+
+#[tauri::command]
+fn create_association(note_id: String, object_type: String, object_id: String, relationship: String, confidence: f64, state: State<VaultState>) -> Result<NoteAssociation, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.create_association(&note_id, &object_type, &object_id, &relationship, confidence)
+}
+
+#[tauri::command]
+fn get_associations_for_note(note_id: String, state: State<VaultState>) -> Result<Vec<NoteAssociation>, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.get_associations_for_note(&note_id)
+}
+
+#[tauri::command]
+fn get_associations_for_object(object_type: String, object_id: String, state: State<VaultState>) -> Result<Vec<NoteAssociation>, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.get_associations_for_object(&object_type, &object_id)
+}
+
+#[tauri::command]
+fn delete_association(id: String, state: State<VaultState>) -> Result<(), String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.delete_association(&id)
+}
+
+// --- Note Metadata ---
+
+#[tauri::command]
+fn get_note_metadata(note_id: String, state: State<VaultState>) -> Result<NoteMetadata, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.get_note_metadata(&note_id)
+}
+
+#[tauri::command]
+fn update_note_metadata(note_id: String, lifecycle: Option<String>, last_meaningful_edit: Option<String>, view_count: Option<i32>, importance_score: Option<f64>, distilled_at: Option<String>, source_type: Option<String>, state: State<VaultState>) -> Result<NoteMetadata, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.update_note_metadata(&note_id, lifecycle.as_deref(), last_meaningful_edit.as_deref(), view_count, importance_score, distilled_at.as_deref(), source_type.as_deref())
+}
+
+#[tauri::command]
+fn get_stale_notes(days_threshold: i32, state: State<VaultState>) -> Result<Vec<Note>, String> {
+    let guard = lock_vault!(state);
+    let vault = guard.as_ref().ok_or("No vault open")?;
+    vault.get_stale_notes(days_threshold)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -278,6 +442,33 @@ pub fn run() {
             update_action_status,
             save_calendar_events,
             get_calendar_events,
+            // Projects
+            create_project,
+            update_project,
+            list_projects,
+            get_project,
+            delete_project,
+            // People
+            create_person,
+            update_person,
+            list_people,
+            get_person,
+            delete_person,
+            search_people,
+            // Decisions
+            create_decision,
+            update_decision,
+            list_decisions,
+            get_decision,
+            // Associations
+            create_association,
+            get_associations_for_note,
+            get_associations_for_object,
+            delete_association,
+            // Note metadata
+            get_note_metadata,
+            update_note_metadata,
+            get_stale_notes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

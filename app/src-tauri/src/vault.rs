@@ -168,6 +168,68 @@ impl Vault {
             CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_note_id);
             CREATE INDEX IF NOT EXISTS idx_entities_note ON entities(note_id);
             CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                status TEXT DEFAULT 'active',
+                category TEXT DEFAULT '',
+                goal TEXT DEFAULT '',
+                deadline TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+
+            CREATE TABLE IF NOT EXISTS people (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                role TEXT DEFAULT '',
+                organization TEXT DEFAULT '',
+                email TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
+                last_contact TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_people_name ON people(name);
+
+            CREATE TABLE IF NOT EXISTS decisions (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                reasoning TEXT DEFAULT '',
+                alternatives TEXT DEFAULT '[]',
+                status TEXT DEFAULT 'active',
+                decided_at TEXT DEFAULT (datetime('now')),
+                revisit_date TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status);
+
+            CREATE TABLE IF NOT EXISTS note_associations (
+                id TEXT PRIMARY KEY,
+                note_id TEXT NOT NULL,
+                object_type TEXT NOT NULL,
+                object_id TEXT NOT NULL,
+                relationship TEXT DEFAULT 'mentions',
+                confidence REAL DEFAULT 1.0,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(note_id, object_type, object_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_assoc_note ON note_associations(note_id);
+            CREATE INDEX IF NOT EXISTS idx_assoc_object ON note_associations(object_type, object_id);
+
+            CREATE TABLE IF NOT EXISTS note_metadata (
+                note_id TEXT PRIMARY KEY,
+                lifecycle TEXT DEFAULT 'active',
+                last_meaningful_edit TEXT,
+                view_count INTEGER DEFAULT 0,
+                importance_score REAL DEFAULT 0.5,
+                distilled_at TEXT,
+                source_type TEXT DEFAULT 'manual'
+            );
             ",
             )
             .map_err(|e| e.to_string())
@@ -980,6 +1042,322 @@ impl Vault {
 
         Ok(events)
     }
+
+    // --- Projects ---
+
+    pub fn create_project(&self, title: &str, description: &str, category: &str, goal: &str, deadline: Option<&str>) -> Result<Project, String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        self.db.execute(
+            "INSERT INTO projects (id, title, description, status, category, goal, deadline, created_at, updated_at) VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7, ?8)",
+            params![id, title, description, category, goal, deadline, now, now],
+        ).map_err(|e| e.to_string())?;
+        Ok(Project { id, title: title.to_string(), description: description.to_string(), status: "active".to_string(), category: category.to_string(), goal: goal.to_string(), deadline: deadline.map(|s| s.to_string()), created_at: now.clone(), updated_at: now })
+    }
+
+    pub fn update_project(&self, id: &str, title: Option<&str>, description: Option<&str>, status: Option<&str>, category: Option<&str>, goal: Option<&str>, deadline: Option<&str>) -> Result<Project, String> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let existing = self.get_project(id)?;
+        let t = title.unwrap_or(&existing.title);
+        let d = description.unwrap_or(&existing.description);
+        let s = status.unwrap_or(&existing.status);
+        let c = category.unwrap_or(&existing.category);
+        let g = goal.unwrap_or(&existing.goal);
+        let dl = deadline.or(existing.deadline.as_deref());
+        self.db.execute(
+            "UPDATE projects SET title=?1, description=?2, status=?3, category=?4, goal=?5, deadline=?6, updated_at=?7 WHERE id=?8",
+            params![t, d, s, c, g, dl, now, id],
+        ).map_err(|e| e.to_string())?;
+        Ok(Project { id: id.to_string(), title: t.to_string(), description: d.to_string(), status: s.to_string(), category: c.to_string(), goal: g.to_string(), deadline: dl.map(|s| s.to_string()), created_at: existing.created_at, updated_at: now })
+    }
+
+    pub fn get_project(&self, id: &str) -> Result<Project, String> {
+        let mut stmt = self.db.prepare("SELECT id, title, description, status, category, goal, deadline, created_at, updated_at FROM projects WHERE id = ?1").map_err(|e| e.to_string())?;
+        let mut rows: Vec<Project> = stmt.query_map(params![id], |row| {
+            Ok(Project {
+                id: row.get(0)?, title: row.get(1)?, description: row.get(2)?,
+                status: row.get(3)?, category: row.get(4)?, goal: row.get(5)?,
+                deadline: row.get(6)?, created_at: row.get(7)?, updated_at: row.get(8)?,
+            })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        rows.pop().ok_or_else(|| "Project not found".to_string())
+    }
+
+    pub fn list_projects(&self, status_filter: Option<&str>) -> Result<Vec<Project>, String> {
+        let query = if status_filter.is_some() {
+            "SELECT id, title, description, status, category, goal, deadline, created_at, updated_at FROM projects WHERE status = ?1 ORDER BY updated_at DESC"
+        } else {
+            "SELECT id, title, description, status, category, goal, deadline, created_at, updated_at FROM projects ORDER BY updated_at DESC"
+        };
+        let mut stmt = self.db.prepare(query).map_err(|e| e.to_string())?;
+        let projects = if let Some(sf) = status_filter {
+            stmt.query_map(params![sf], |row| {
+                Ok(Project {
+                    id: row.get(0)?, title: row.get(1)?, description: row.get(2)?,
+                    status: row.get(3)?, category: row.get(4)?, goal: row.get(5)?,
+                    deadline: row.get(6)?, created_at: row.get(7)?, updated_at: row.get(8)?,
+                })
+            }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect()
+        } else {
+            stmt.query_map([], |row| {
+                Ok(Project {
+                    id: row.get(0)?, title: row.get(1)?, description: row.get(2)?,
+                    status: row.get(3)?, category: row.get(4)?, goal: row.get(5)?,
+                    deadline: row.get(6)?, created_at: row.get(7)?, updated_at: row.get(8)?,
+                })
+            }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect()
+        };
+        Ok(projects)
+    }
+
+    pub fn delete_project(&self, id: &str) -> Result<(), String> {
+        self.db.execute("DELETE FROM note_associations WHERE object_type = 'project' AND object_id = ?1", params![id]).map_err(|e| e.to_string())?;
+        self.db.execute("DELETE FROM projects WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // --- People ---
+
+    pub fn create_person(&self, name: &str, role: &str, organization: &str, email: &str, notes: &str) -> Result<Person, String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        self.db.execute(
+            "INSERT INTO people (id, name, role, organization, email, notes, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![id, name, role, organization, email, notes, now, now],
+        ).map_err(|e| e.to_string())?;
+        Ok(Person { id, name: name.to_string(), role: role.to_string(), organization: organization.to_string(), email: email.to_string(), notes: notes.to_string(), last_contact: None, created_at: now.clone(), updated_at: now })
+    }
+
+    pub fn update_person(&self, id: &str, name: Option<&str>, role: Option<&str>, organization: Option<&str>, email: Option<&str>, notes: Option<&str>, last_contact: Option<&str>) -> Result<Person, String> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let existing = self.get_person(id)?;
+        let n = name.unwrap_or(&existing.name);
+        let r = role.unwrap_or(&existing.role);
+        let o = organization.unwrap_or(&existing.organization);
+        let e = email.unwrap_or(&existing.email);
+        let nt = notes.unwrap_or(&existing.notes);
+        let lc = last_contact.or(existing.last_contact.as_deref());
+        self.db.execute(
+            "UPDATE people SET name=?1, role=?2, organization=?3, email=?4, notes=?5, last_contact=?6, updated_at=?7 WHERE id=?8",
+            params![n, r, o, e, nt, lc, now, id],
+        ).map_err(|e| e.to_string())?;
+        Ok(Person { id: id.to_string(), name: n.to_string(), role: r.to_string(), organization: o.to_string(), email: e.to_string(), notes: nt.to_string(), last_contact: lc.map(|s| s.to_string()), created_at: existing.created_at, updated_at: now })
+    }
+
+    pub fn get_person(&self, id: &str) -> Result<Person, String> {
+        let mut stmt = self.db.prepare("SELECT id, name, role, organization, email, notes, last_contact, created_at, updated_at FROM people WHERE id = ?1").map_err(|e| e.to_string())?;
+        let mut rows: Vec<Person> = stmt.query_map(params![id], |row| {
+            Ok(Person {
+                id: row.get(0)?, name: row.get(1)?, role: row.get(2)?,
+                organization: row.get(3)?, email: row.get(4)?, notes: row.get(5)?,
+                last_contact: row.get(6)?, created_at: row.get(7)?, updated_at: row.get(8)?,
+            })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        rows.pop().ok_or_else(|| "Person not found".to_string())
+    }
+
+    pub fn list_people(&self) -> Result<Vec<Person>, String> {
+        let mut stmt = self.db.prepare("SELECT id, name, role, organization, email, notes, last_contact, created_at, updated_at FROM people ORDER BY name ASC").map_err(|e| e.to_string())?;
+        let people = stmt.query_map([], |row| {
+            Ok(Person {
+                id: row.get(0)?, name: row.get(1)?, role: row.get(2)?,
+                organization: row.get(3)?, email: row.get(4)?, notes: row.get(5)?,
+                last_contact: row.get(6)?, created_at: row.get(7)?, updated_at: row.get(8)?,
+            })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        Ok(people)
+    }
+
+    pub fn delete_person(&self, id: &str) -> Result<(), String> {
+        self.db.execute("DELETE FROM note_associations WHERE object_type = 'person' AND object_id = ?1", params![id]).map_err(|e| e.to_string())?;
+        self.db.execute("DELETE FROM people WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn search_people(&self, query: &str) -> Result<Vec<Person>, String> {
+        let pattern = format!("%{}%", query);
+        let mut stmt = self.db.prepare("SELECT id, name, role, organization, email, notes, last_contact, created_at, updated_at FROM people WHERE name LIKE ?1 OR role LIKE ?1 OR organization LIKE ?1 ORDER BY name ASC").map_err(|e| e.to_string())?;
+        let people = stmt.query_map(params![pattern], |row| {
+            Ok(Person {
+                id: row.get(0)?, name: row.get(1)?, role: row.get(2)?,
+                organization: row.get(3)?, email: row.get(4)?, notes: row.get(5)?,
+                last_contact: row.get(6)?, created_at: row.get(7)?, updated_at: row.get(8)?,
+            })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        Ok(people)
+    }
+
+    // --- Decisions ---
+
+    pub fn create_decision(&self, title: &str, description: &str, reasoning: &str, alternatives: &str, revisit_date: Option<&str>) -> Result<Decision, String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        self.db.execute(
+            "INSERT INTO decisions (id, title, description, reasoning, alternatives, status, decided_at, revisit_date, created_at) VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7, ?8)",
+            params![id, title, description, reasoning, alternatives, now, revisit_date, now],
+        ).map_err(|e| e.to_string())?;
+        Ok(Decision { id, title: title.to_string(), description: description.to_string(), reasoning: reasoning.to_string(), alternatives: alternatives.to_string(), status: "active".to_string(), decided_at: now.clone(), revisit_date: revisit_date.map(|s| s.to_string()), created_at: now })
+    }
+
+    pub fn update_decision(&self, id: &str, title: Option<&str>, description: Option<&str>, reasoning: Option<&str>, alternatives: Option<&str>, status: Option<&str>, revisit_date: Option<&str>) -> Result<Decision, String> {
+        let existing = self.get_decision(id)?;
+        let t = title.unwrap_or(&existing.title);
+        let d = description.unwrap_or(&existing.description);
+        let r = reasoning.unwrap_or(&existing.reasoning);
+        let a = alternatives.unwrap_or(&existing.alternatives);
+        let s = status.unwrap_or(&existing.status);
+        let rd = revisit_date.or(existing.revisit_date.as_deref());
+        self.db.execute(
+            "UPDATE decisions SET title=?1, description=?2, reasoning=?3, alternatives=?4, status=?5, revisit_date=?6 WHERE id=?7",
+            params![t, d, r, a, s, rd, id],
+        ).map_err(|e| e.to_string())?;
+        Ok(Decision { id: id.to_string(), title: t.to_string(), description: d.to_string(), reasoning: r.to_string(), alternatives: a.to_string(), status: s.to_string(), decided_at: existing.decided_at, revisit_date: rd.map(|s| s.to_string()), created_at: existing.created_at })
+    }
+
+    pub fn get_decision(&self, id: &str) -> Result<Decision, String> {
+        let mut stmt = self.db.prepare("SELECT id, title, description, reasoning, alternatives, status, decided_at, revisit_date, created_at FROM decisions WHERE id = ?1").map_err(|e| e.to_string())?;
+        let mut rows: Vec<Decision> = stmt.query_map(params![id], |row| {
+            Ok(Decision {
+                id: row.get(0)?, title: row.get(1)?, description: row.get(2)?,
+                reasoning: row.get(3)?, alternatives: row.get(4)?, status: row.get(5)?,
+                decided_at: row.get(6)?, revisit_date: row.get(7)?, created_at: row.get(8)?,
+            })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        rows.pop().ok_or_else(|| "Decision not found".to_string())
+    }
+
+    pub fn list_decisions(&self, status_filter: Option<&str>) -> Result<Vec<Decision>, String> {
+        let query = if status_filter.is_some() {
+            "SELECT id, title, description, reasoning, alternatives, status, decided_at, revisit_date, created_at FROM decisions WHERE status = ?1 ORDER BY decided_at DESC"
+        } else {
+            "SELECT id, title, description, reasoning, alternatives, status, decided_at, revisit_date, created_at FROM decisions ORDER BY decided_at DESC"
+        };
+        let mut stmt = self.db.prepare(query).map_err(|e| e.to_string())?;
+        let decisions = if let Some(sf) = status_filter {
+            stmt.query_map(params![sf], |row| {
+                Ok(Decision {
+                    id: row.get(0)?, title: row.get(1)?, description: row.get(2)?,
+                    reasoning: row.get(3)?, alternatives: row.get(4)?, status: row.get(5)?,
+                    decided_at: row.get(6)?, revisit_date: row.get(7)?, created_at: row.get(8)?,
+                })
+            }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect()
+        } else {
+            stmt.query_map([], |row| {
+                Ok(Decision {
+                    id: row.get(0)?, title: row.get(1)?, description: row.get(2)?,
+                    reasoning: row.get(3)?, alternatives: row.get(4)?, status: row.get(5)?,
+                    decided_at: row.get(6)?, revisit_date: row.get(7)?, created_at: row.get(8)?,
+                })
+            }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect()
+        };
+        Ok(decisions)
+    }
+
+    // --- Note Associations ---
+
+    pub fn create_association(&self, note_id: &str, object_type: &str, object_id: &str, relationship: &str, confidence: f64) -> Result<NoteAssociation, String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        self.db.execute(
+            "INSERT OR REPLACE INTO note_associations (id, note_id, object_type, object_id, relationship, confidence, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![id, note_id, object_type, object_id, relationship, confidence, now],
+        ).map_err(|e| e.to_string())?;
+        Ok(NoteAssociation { id, note_id: note_id.to_string(), object_type: object_type.to_string(), object_id: object_id.to_string(), relationship: relationship.to_string(), confidence, created_at: now })
+    }
+
+    pub fn get_associations_for_note(&self, note_id: &str) -> Result<Vec<NoteAssociation>, String> {
+        let mut stmt = self.db.prepare("SELECT id, note_id, object_type, object_id, relationship, confidence, created_at FROM note_associations WHERE note_id = ?1").map_err(|e| e.to_string())?;
+        let assocs = stmt.query_map(params![note_id], |row| {
+            Ok(NoteAssociation {
+                id: row.get(0)?, note_id: row.get(1)?, object_type: row.get(2)?,
+                object_id: row.get(3)?, relationship: row.get(4)?, confidence: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        Ok(assocs)
+    }
+
+    pub fn get_associations_for_object(&self, object_type: &str, object_id: &str) -> Result<Vec<NoteAssociation>, String> {
+        let mut stmt = self.db.prepare("SELECT id, note_id, object_type, object_id, relationship, confidence, created_at FROM note_associations WHERE object_type = ?1 AND object_id = ?2").map_err(|e| e.to_string())?;
+        let assocs = stmt.query_map(params![object_type, object_id], |row| {
+            Ok(NoteAssociation {
+                id: row.get(0)?, note_id: row.get(1)?, object_type: row.get(2)?,
+                object_id: row.get(3)?, relationship: row.get(4)?, confidence: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        Ok(assocs)
+    }
+
+    pub fn delete_association(&self, id: &str) -> Result<(), String> {
+        self.db.execute("DELETE FROM note_associations WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // --- Note Metadata ---
+
+    pub fn get_note_metadata(&self, note_id: &str) -> Result<NoteMetadata, String> {
+        let mut stmt = self.db.prepare("SELECT note_id, lifecycle, last_meaningful_edit, view_count, importance_score, distilled_at, source_type FROM note_metadata WHERE note_id = ?1").map_err(|e| e.to_string())?;
+        let mut rows: Vec<NoteMetadata> = stmt.query_map(params![note_id], |row| {
+            Ok(NoteMetadata {
+                note_id: row.get(0)?, lifecycle: row.get(1)?,
+                last_meaningful_edit: row.get(2)?, view_count: row.get(3)?,
+                importance_score: row.get(4)?, distilled_at: row.get(5)?,
+                source_type: row.get(6)?,
+            })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        match rows.pop() {
+            Some(meta) => Ok(meta),
+            None => {
+                // Auto-create default metadata
+                let now = chrono::Utc::now().to_rfc3339();
+                self.db.execute(
+                    "INSERT INTO note_metadata (note_id, lifecycle, last_meaningful_edit, view_count, importance_score, source_type) VALUES (?1, 'active', ?2, 0, 0.5, 'manual')",
+                    params![note_id, now],
+                ).map_err(|e| e.to_string())?;
+                Ok(NoteMetadata { note_id: note_id.to_string(), lifecycle: "active".to_string(), last_meaningful_edit: Some(now), view_count: 0, importance_score: 0.5, distilled_at: None, source_type: "manual".to_string() })
+            }
+        }
+    }
+
+    pub fn update_note_metadata(&self, note_id: &str, lifecycle: Option<&str>, last_meaningful_edit: Option<&str>, view_count: Option<i32>, importance_score: Option<f64>, distilled_at: Option<&str>, source_type: Option<&str>) -> Result<NoteMetadata, String> {
+        // Ensure metadata exists first
+        let existing = self.get_note_metadata(note_id)?;
+        let lc = lifecycle.unwrap_or(&existing.lifecycle);
+        let lme = last_meaningful_edit.or(existing.last_meaningful_edit.as_deref());
+        let vc = view_count.unwrap_or(existing.view_count);
+        let is = importance_score.unwrap_or(existing.importance_score);
+        let da = distilled_at.or(existing.distilled_at.as_deref());
+        let st = source_type.unwrap_or(&existing.source_type);
+        self.db.execute(
+            "UPDATE note_metadata SET lifecycle=?1, last_meaningful_edit=?2, view_count=?3, importance_score=?4, distilled_at=?5, source_type=?6 WHERE note_id=?7",
+            params![lc, lme, vc, is, da, st, note_id],
+        ).map_err(|e| e.to_string())?;
+        Ok(NoteMetadata { note_id: note_id.to_string(), lifecycle: lc.to_string(), last_meaningful_edit: lme.map(|s| s.to_string()), view_count: vc, importance_score: is, distilled_at: da.map(|s| s.to_string()), source_type: st.to_string() })
+    }
+
+    pub fn get_stale_notes(&self, days_threshold: i32) -> Result<Vec<Note>, String> {
+        let mut stmt = self.db.prepare(
+            "SELECT n.id, n.file_path, n.title, n.content, n.frontmatter, n.created_at, n.updated_at
+             FROM notes n
+             JOIN note_metadata nm ON n.id = nm.note_id
+             WHERE nm.lifecycle = 'active'
+               AND nm.importance_score > 0.3
+               AND julianday('now') - julianday(COALESCE(nm.last_meaningful_edit, n.updated_at)) > ?1
+             ORDER BY nm.importance_score DESC
+             LIMIT 20"
+        ).map_err(|e| e.to_string())?;
+        let notes = stmt.query_map(params![days_threshold], |row| {
+            let fm_str: String = row.get(4)?;
+            let frontmatter: HashMap<String, String> = serde_json::from_str(&fm_str).unwrap_or_default();
+            Ok(Note {
+                id: row.get(0)?, file_path: row.get(1)?, title: row.get(2)?,
+                content: row.get(3)?, frontmatter, outgoing_links: vec![],
+                created_at: row.get(5)?, updated_at: row.get(6)?,
+            })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        Ok(notes)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1046,6 +1424,67 @@ pub struct TagInfo {
 pub struct TemplateInfo {
     pub name: String,
     pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Project {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub status: String,
+    pub category: String,
+    pub goal: String,
+    pub deadline: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Person {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+    pub organization: String,
+    pub email: String,
+    pub notes: String,
+    pub last_contact: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Decision {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub reasoning: String,
+    pub alternatives: String,
+    pub status: String,
+    pub decided_at: String,
+    pub revisit_date: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteAssociation {
+    pub id: String,
+    pub note_id: String,
+    pub object_type: String,
+    pub object_id: String,
+    pub relationship: String,
+    pub confidence: f64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteMetadata {
+    pub note_id: String,
+    pub lifecycle: String,
+    pub last_meaningful_edit: Option<String>,
+    pub view_count: i32,
+    pub importance_score: f64,
+    pub distilled_at: Option<String>,
+    pub source_type: String,
 }
 
 fn parse_frontmatter(raw: &str) -> (HashMap<String, String>, String) {

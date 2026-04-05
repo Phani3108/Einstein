@@ -7,7 +7,13 @@ import { processNoteThroughPipeline, loadCentralState } from "./lib/dataPipeline
 import { Sidebar } from "./components/Sidebar";
 import { Editor } from "./components/Editor";
 import { RightPanel } from "./components/RightPanel";
+import { ContextPanel } from "./components/ContextPanel";
+import { CommandPalette } from "./components/CommandPalette";
 import { SearchModal } from "./components/SearchModal";
+import { BrainHome } from "./components/BrainHome";
+import { ProjectDetail } from "./components/ProjectDetail";
+import { PersonDetail } from "./components/PersonDetail";
+import { DecisionDetail } from "./components/DecisionDetail";
 import { GraphView } from "./components/GraphView";
 import { CanvasView } from "./components/CanvasView";
 import { CalendarView } from "./components/CalendarView";
@@ -61,6 +67,7 @@ initLanguage();
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // Initialize sync when vault opens
   useEffect(() => {
@@ -72,11 +79,45 @@ function App() {
       loadCentralState(dispatch, state.notes).catch((err) =>
         console.error("Failed to load central state:", err)
       );
+
+      // Load first-class objects (projects, people, decisions)
+      api.listProjects().then((projects) =>
+        dispatch({ type: "SET_PROJECTS", projects: projects.map((p) => ({ ...p, status: p.status as "active" | "paused" | "completed" | "archived" })) })
+      ).catch((err) => console.error("Failed to load projects:", err));
+
+      api.listPeople().then((people) =>
+        dispatch({ type: "SET_PEOPLE", people })
+      ).catch((err) => console.error("Failed to load people:", err));
+
+      api.listDecisions().then((decisions) =>
+        dispatch({ type: "SET_DECISIONS", decisions: decisions.map((d) => ({ ...d, status: d.status as "active" | "revisit" | "reversed" | "superseded" })) })
+      ).catch((err) => console.error("Failed to load decisions:", err));
     }
     return () => {
       syncManager.destroy();
     };
   }, [state.vaultPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for custom events from other components
+  useEffect(() => {
+    const handleCreateProject = async () => {
+      try {
+        const project = await api.createProject("New Project", "", "", "", undefined);
+        dispatch({ type: "ADD_PROJECT", project: { ...project, status: project.status as "active" | "paused" | "completed" | "archived" } });
+        dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "project", projectId: project.id } });
+      } catch (err) {
+        console.error("Failed to create project:", err);
+      }
+    };
+    const handleCreateNote = () => setNoteModalOpen(true);
+
+    window.addEventListener("einstein-create-project", handleCreateProject);
+    window.addEventListener("einstein-create-note", handleCreateNote);
+    return () => {
+      window.removeEventListener("einstein-create-project", handleCreateProject);
+      window.removeEventListener("einstein-create-note", handleCreateNote);
+    };
+  }, [dispatch]);
 
   const handleCreateNote = useCallback(
     async (name: string) => {
@@ -102,9 +143,13 @@ function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
 
+      if (mod && e.key === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
       if (mod && e.key === "p") {
         e.preventDefault();
-        dispatch({ type: "TOGGLE_SEARCH" });
+        setCommandPaletteOpen((prev) => !prev);
       }
       if (mod && e.key === "n") {
         e.preventDefault();
@@ -136,6 +181,25 @@ function App() {
   }
 
   const renderMainContent = () => {
+    // ContextMode routing (new system) — checked first
+    const mode = state.contextMode;
+    switch (mode.type) {
+      case "home":
+        // Only render BrainHome if sidebarView is "contexthub" or "files" (default)
+        if (state.sidebarView === "contexthub" || state.sidebarView === "files") {
+          return <BrainHome />;
+        }
+        break;
+      case "project":
+        return <ProjectDetail projectId={mode.projectId} />;
+      case "person":
+        return <PersonDetail personId={mode.personId} />;
+      case "decision":
+        return <DecisionDetail decisionId={mode.decisionId} />;
+      // Other contextMode types fall through to sidebarView
+    }
+
+    // Legacy sidebarView routing (preserved during migration)
     switch (state.sidebarView) {
       case "graph":
         return <GraphView />;
@@ -172,16 +236,21 @@ function App() {
       case "actions":
         return <ActionItemsDashboard />;
       case "contexthub":
-        return <ContextHub />;
+        return <BrainHome />;
       default:
         return <Editor />;
     }
   };
 
-  const showRightPanel = ["files", "backlinks", "search", "bookmarks"].includes(state.sidebarView);
-  // Always show secondary tabs unless on full-page views like settings/devhub/integrations
+  // Show context panel for contextMode views, legacy RightPanel for old views
+  const contextModeActive = ["project", "person", "decision"].includes(state.contextMode.type);
+  const showContextPanel = state.rightPanelOpen && (
+    state.sidebarView === "files" || contextModeActive
+  );
+  const showLegacyRightPanel = state.rightPanelOpen && !showContextPanel && ["backlinks", "search", "bookmarks"].includes(state.sidebarView);
+  // Always show secondary tabs unless on full-page views or contextMode detail views
   const fullPageViews = ["settings", "devhub", "integrations"];
-  const showSecondaryTabs = !fullPageViews.includes(state.sidebarView);
+  const showSecondaryTabs = !fullPageViews.includes(state.sidebarView) && !contextModeActive;
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
@@ -208,8 +277,10 @@ function App() {
           )}
           {renderMainContent()}
         </div>
-        {showRightPanel && <RightPanel />}
+        {showContextPanel && <ContextPanel />}
+        {showLegacyRightPanel && <RightPanel />}
       </div>
+      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <SearchModal />
       <WikilinkPreview />
       <NoteNameModal

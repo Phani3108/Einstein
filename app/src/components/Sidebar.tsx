@@ -12,6 +12,12 @@ import {
   Plug,
   BookOpen,
   Settings,
+  Home,
+  Target,
+  Users,
+  Scale,
+  PenTool,
+  Command,
 } from "lucide-react";
 import { useApp } from "../lib/store";
 import { useTranslation } from "../lib/i18n";
@@ -32,15 +38,31 @@ interface NavItem {
 function useNavItems(dispatch: React.Dispatch<import("../lib/store").AppAction>): NavItem[] {
   const { t } = useTranslation();
   return useMemo(() => [
-    // Core navigation — always visible in sidebar
-    { icon: <FileText size={16} />, title: t("sidebar.files"), view: "files" as SidebarView },
-    { icon: <Search size={16} />, title: `${t("sidebar.search")} (\u2318P)`, action: () => dispatch({ type: "TOGGLE_SEARCH" }) },
+    // Brain home
+    { icon: <Home size={16} />, title: "Home", view: "contexthub" as SidebarView, action: () => {
+      dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "home" } });
+      dispatch({ type: "SET_SIDEBAR_VIEW", view: "contexthub" });
+    }},
+    // Core navigation
+    { icon: <FileText size={16} />, title: t("sidebar.files"), view: "files" as SidebarView, action: () => {
+      dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "home" } });
+      dispatch({ type: "SET_SIDEBAR_VIEW", view: "files" });
+    }},
+    { icon: <Command size={16} />, title: "Search (⌘K)", action: () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+    }},
     { icon: <GitBranch size={16} />, title: t("sidebar.graph"), view: "graph" as SidebarView },
+    { icon: <Target size={16} />, title: "Projects", action: () => {
+      dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "home" } });
+      dispatch({ type: "SET_SIDEBAR_VIEW", view: "contexthub" });
+    }},
+    { icon: <Users size={16} />, title: "People", action: () => {
+      dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "home" } });
+      dispatch({ type: "SET_SIDEBAR_VIEW", view: "contexthub" });
+    }},
+    { icon: <PenTool size={16} />, title: "Canvas", view: "canvas" as SidebarView },
     { icon: <Calendar size={16} />, title: t("sidebar.calendar"), view: "calendar" as SidebarView },
     { icon: <Star size={16} />, title: t("sidebar.bookmarks"), view: "bookmarks" as SidebarView, divider: true },
-    // Tools
-    { icon: <Plug size={16} />, title: "Integrations", view: "integrations" as SidebarView },
-    { icon: <BookOpen size={16} />, title: "Developer Hub", view: "devhub" as SidebarView, divider: true },
     // System
     { icon: <Settings size={16} />, title: t("sidebar.settings"), view: "settings" as SidebarView },
   ], [dispatch, t]);
