@@ -1,0 +1,43 @@
+{
+  "providers": {
+    "openai": {
+      "models": {
+        "gpt-4": {
+          "description": "OpenAI GPT-4 model",
+          "max_tokens": 8192,
+          "default_temperature": 0.0
+        },
+        "gpt-3.5-turbo": {
+          "description": "OpenAI GPT-3.5 Turbo model",
+          "max_tokens": 4096,
+          "default_temperature": 0.0
+        }
+      }
+    },
+    "anthropic": {
+      "models": {
+        "claude-3-opus": {
+          "description": "Anthropic Claude 3 Opus model",
+          "max_tokens": 4096,
+          "default_temperature": 0.0
+        },
+        "claude-3-sonnet": {
+          "description": "Anthropic Claude 3 Sonnet model",
+          "max_tokens": 4096,
+          "default_temperature": 0.0
+        }
+      }
+    },
+    "deepseek": {
+      "models": {
+        "deepseek-chat": {
+          "description": "DeepSeek Chat model",
+          "max_tokens": 4096,
+          "default_temperature": 0.0
+        }
+      }
+    }
+  },
+  "default_provider": "openai",
+  "default_model": "gpt-4"
+}

@@ -1,0 +1,11 @@
+Please extract all relevant entities from the following text. Identify people, locations, dates, activities, emotions, organizations, and events.
+
+For each entity, provide a unique identifier, entity type, value, confidence score, and the context in which it appears. Also identify relationships between entities where applicable.
+
+TEXT:
+{CONTENT}
+
+METADATA:
+{METADATA}
+
+Extract entities and their relationships, and format your response as JSON according to the schema.

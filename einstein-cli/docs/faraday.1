@@ -1,0 +1,285 @@
+.TH FARADAY 1 "2024" "Faraday CLI 0.1.0" "User Commands"
+.SH NAME
+faraday \- command-line interface for the Personal Semantic Engine
+.SH SYNOPSIS
+.B faraday
+[\fIOPTION\fR]... [\fICOMMAND\fR] [\fIARGS\fR]...
+.SH DESCRIPTION
+Faraday is a command-line interface for managing thoughts, performing semantic searches, and analyzing your personal knowledge base. It provides both interactive and command-line modes for efficient thought capture and retrieval.
+
+When run without arguments, Faraday automatically starts in interactive mode for a conversational experience.
+
+.SH GLOBAL OPTIONS
+.TP
+.BR \-\-config " " \fIPATH\fR
+Use custom configuration file instead of the default platform-specific location.
+.TP
+.BR \-\-api\-url " " \fIURL\fR
+Override the API server URL from configuration.
+.TP
+.BR \-\-json
+Output results in JSON format for scripting and automation.
+.TP
+.BR \-\-verbose ", " \-v
+Enable verbose output for debugging and detailed information.
+.TP
+.BR \-\-no\-interactive
+Disable automatic interactive mode when no command is given.
+.TP
+.BR \-\-help ", " \-h
+Show help message and exit.
+
+.SH COMMANDS
+.SS Authentication Commands (auth)
+.TP
+.B faraday auth login
+Login to your Faraday server with email and password.
+.TP
+.B faraday auth logout
+Logout and clear stored authentication tokens.
+.TP
+.B faraday auth status
+Show current authentication status and token information.
+
+.SS Configuration Commands (config)
+.TP
+.B faraday config show
+Display all configuration settings in a readable format.
+.TP
+.B faraday config get \fIKEY\fR
+Get the value of a specific configuration key.
+.TP
+.B faraday config set \fIKEY\fR \fIVALUE\fR
+Set a configuration key to the specified value.
+.TP
+.B faraday config reset
+Reset all configuration to default values (requires confirmation).
+.TP
+.B faraday config path
+Show the path to the configuration file.
+
+.SS Thought Management Commands (thoughts)
+.TP
+.B faraday thoughts add \fICONTENT\fR
+Add a new thought with the specified content.
+.TP
+.B faraday thoughts list
+List recent thoughts with basic information.
+.TP
+.B faraday thoughts show \fIID\fR
+Show detailed information about a specific thought by ID.
+.TP
+.B faraday thoughts delete \fIID\fR
+Delete a thought by ID (requires confirmation).
+
+.SS Search Commands
+.TP
+.B faraday search \fIQUERY\fR
+Search thoughts using natural language semantic search.
+
+.SS Synchronization Commands (sync)
+.TP
+.B faraday sync
+Synchronize local cache with the server.
+
+.SS Help Commands (help)
+.TP
+.B faraday help guide [\fITOPIC\fR]
+Show detailed help guides for specific topics.
+.TP
+.B faraday help tutorial
+Start an interactive tutorial for new users.
+.TP
+.B faraday help shortcuts
+Show keyboard shortcuts and quick commands.
+.TP
+.B faraday help workflows
+Show common workflows and usage patterns.
+
+.SS Other Commands
+.TP
+.B faraday interactive
+Explicitly start interactive mode.
+.TP
+.B faraday version
+Show version information.
+
+.SH INTERACTIVE MODE
+Interactive mode provides a conversational interface for daily Faraday usage. It starts automatically when you run \fBfaraday\fR without arguments in a terminal.
+
+.SS Interactive Commands
+.TP
+.B add: \fICONTENT\fR
+Add a thought using natural syntax.
+.TP
+.B search: \fIQUERY\fR
+Search thoughts using natural syntax.
+.TP
+.B list [\fIN\fR]
+List recent thoughts (default: 10).
+.TP
+.B show \fIID\fR
+Show thought details.
+.TP
+.B delete \fIID\fR
+Delete a thought.
+.TP
+.B help [\fICOMMAND\fR]
+Show help (general or for specific command).
+.TP
+.B tutorial
+Start interactive tutorial.
+.TP
+.B tips
+Show usage tips.
+.TP
+.B exit, quit
+Exit interactive mode.
+
+.SS Interactive Shortcuts
+.TP
+.B h
+help
+.TP
+.B q
+quit
+.TP
+.B ls
+list
+.TP
+.B rm
+delete
+.TP
+.B ?
+help
+
+.SH CONFIGURATION
+Faraday uses TOML configuration files stored in platform-specific locations:
+.TP
+.B Linux/Unix
+~/.config/faraday/config.toml
+.TP
+.B macOS
+~/Library/Application Support/faraday/config.toml
+.TP
+.B Windows
+%APPDATA%\\faraday\\config.toml
+
+.SS Configuration Keys
+.TP
+.B api.url
+Faraday server URL (default: http://localhost:8001)
+.TP
+.B api.timeout
+Request timeout in seconds (default: 30)
+.TP
+.B auth.auto_login
+Automatically login when needed (default: true)
+.TP
+.B auth.remember_token
+Remember authentication tokens (default: true)
+.TP
+.B output.colors
+Enable colored output (default: true)
+.TP
+.B output.max_results
+Maximum results in lists (default: 20)
+.TP
+.B cache.enabled
+Enable local caching (default: true)
+.TP
+.B cache.max_size_mb
+Maximum cache size in MB (default: 100)
+
+.SH EXAMPLES
+.SS First-time Setup
+.nf
+faraday config set api.url http://localhost:8001
+faraday auth login
+.fi
+
+.SS Daily Usage
+.nf
+# Interactive mode
+faraday
+faraday> add: Had a great meeting today
+faraday> search: coffee meetings
+faraday> exit
+
+# Command-line mode
+faraday thoughts add "Quick thought"
+faraday search "important insights" --limit 5
+faraday thoughts list
+.fi
+
+.SS Scripting
+.nf
+# JSON output for processing
+faraday --json thoughts list | jq '.thoughts[].content'
+
+# Batch operations
+faraday --json search "AI" | jq '.results[] | select(.score > 0.8)'
+.fi
+
+.SS Configuration Management
+.nf
+faraday config show
+faraday config set output.colors false
+faraday config get api.url
+.fi
+
+.SH ENVIRONMENT VARIABLES
+.TP
+.B FARADAY_API_URL
+Override the default API URL.
+.TP
+.B FARADAY_CONFIG
+Override the default configuration file path.
+.TP
+.B FARADAY_NO_INTERACTIVE
+Disable automatic interactive mode (set to any value).
+
+.SH FILES
+.TP
+.I ~/.config/faraday/config.toml
+Default configuration file (Linux/Unix).
+.TP
+.I ~/.config/faraday/cache/
+Local cache directory.
+.TP
+.I ~/.config/faraday/auth/
+Authentication token storage.
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+General error (authentication, network, validation, etc.)
+.TP
+.B 2
+Command-line usage error
+
+.SH BUGS
+Report bugs to the project repository or issue tracker.
+
+.SH SEE ALSO
+.BR jq (1),
+.BR curl (1)
+
+For comprehensive documentation, see:
+.TP
+.B faraday help guide
+Complete help system
+.TP
+.B faraday help tutorial
+Interactive tutorial
+.TP
+Online documentation at the project repository
+
+.SH AUTHOR
+Faraday CLI is part of the Personal Semantic Engine project.
+
+.SH COPYRIGHT
+This is free software; see the source for copying conditions.

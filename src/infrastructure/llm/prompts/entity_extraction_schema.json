@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "properties": {
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "A unique identifier for this entity within the extraction"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["PERSON", "LOCATION", "DATE", "ACTIVITY", "EMOTION", "ORGANIZATION", "EVENT"],
+            "description": "The type of entity"
+          },
+          "value": {
+            "type": "string",
+            "description": "The actual entity value (e.g., 'John Smith' for a PERSON)"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score between 0 and 1"
+          },
+          "context": {
+            "type": "string",
+            "description": "The relevant portion of text where the entity appears"
+          },
+          "relationships": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "target_id": {
+                  "type": "string",
+                  "description": "The ID of the related entity"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "The type of relationship (e.g., 'works_for', 'located_in')"
+                },
+                "strength": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Strength of the relationship between 0 and 1"
+                }
+              },
+              "required": ["target_id", "type"]
+            }
+          }
+        },
+        "required": ["id", "type", "value"]
+      }
+    }
+  },
+  "required": ["entities"]
+}
