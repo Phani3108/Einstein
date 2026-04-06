@@ -45,7 +45,7 @@ export function WelcomeScreen() {
 
   // Onboarding state
   const [selectedLang, setSelectedLang] = useState<Language>("en");
-  const [vaultPath, setVaultPath] = useState("");
+  const [vaultPath, setVaultPath] = useState("~/Documents/einstein-vault");
   const [vaultName, setVaultName] = useState("");
   const [theme, setTheme] = useState<"dark" | "light" | "warm">("dark");
   const [aiMode, setAiMode] = useState<"local" | "cloud" | "none">("local");
@@ -65,18 +65,15 @@ export function WelcomeScreen() {
   }, []);
 
   const handleBrowse = useCallback(async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: "Select Vault Folder",
-      });
-      if (selected) {
-        setVaultPath(selected as string);
-        setError(null);
-      }
-    } catch (err) {
-      console.error("Browse failed:", err);
+    // In cloud/web mode, prompt user for a path since native file dialog is unavailable
+    const suggested = "~/Documents/einstein-vault";
+    const input = window.prompt(
+      "Enter the folder path for your vault:\n\n(In cloud mode, the vault is stored on the server.)",
+      suggested
+    );
+    if (input && input.trim()) {
+      setVaultPath(input.trim());
+      setError(null);
     }
   }, []);
 

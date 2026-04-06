@@ -57,7 +57,14 @@ class PineconeVectorStore(VectorStoreService, LoggerMixin):
         """
         self.api_key = api_key or os.getenv("PINECONE_API_KEY")
         if not self.api_key:
-            raise ValueError("Pinecone API key is required")
+            self.logger.warning("Pinecone API key not set — vector store disabled. Semantic search will be unavailable.")
+            self.index = None
+            self.host = None
+            self.environment = None
+            self.index_name = index_name
+            self.namespace = namespace
+            self.dimension = dimension
+            return
 
         self.host = host or os.getenv("PINECONE_HOST")
         self.environment = environment or os.getenv("PINECONE_ENVIRONMENT")  # Keep for backward compatibility
@@ -119,6 +126,8 @@ class PineconeVectorStore(VectorStoreService, LoggerMixin):
         Raises:
             VectorStoreError: If storage fails
         """
+        if self.index is None:
+            return
         args = {
             "vector_id": id,
             "vector_dimension": len(vector),
@@ -209,6 +218,8 @@ class PineconeVectorStore(VectorStoreService, LoggerMixin):
         Raises:
             VectorStoreError: If search fails
         """
+        if self.index is None:
+            return []
         args = {
             "query_dimension": len(query_vector),
             "top_k": top_k,
@@ -309,6 +320,8 @@ class PineconeVectorStore(VectorStoreService, LoggerMixin):
         Raises:
             VectorStoreError: If deletion fails
         """
+        if self.index is None:
+            return
         try:
             self.index.delete(ids=ids, namespace=self.namespace)
         except Exception as e:

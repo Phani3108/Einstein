@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
-import { useApp, DecisionState } from "../lib/store";
+import { useApp } from "../lib/store";
+import type { DecisionState } from "../lib/store";
 import { api } from "../lib/api";
 import {
   Scale,

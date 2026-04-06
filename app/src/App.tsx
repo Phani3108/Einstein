@@ -37,6 +37,12 @@ import "./styles/global.css";
 // Initialize i18n before render
 initLanguage();
 
+// Auto-provision auth token for development (cloud mode)
+if (!localStorage.getItem("einstein_auth_token")) {
+  // Development token — replace with real auth flow in production
+  localStorage.setItem("einstein_auth_token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2MGJkOTVlMC0xZDg2LTQ5YTAtOTljNC0xYjcyNzczYmE0NTAiLCJlbWFpbCI6ImFkbWluQGVpbnN0ZWluLmFwcCIsImV4cCI6MTgwNzAxODEwM30.atuZ75fSz9rQjo34IylgN3ZTv7wkD4-Sy7nX5Q-Ck4Y");
+}
+
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [noteModalOpen, setNoteModalOpen] = useState(false);
