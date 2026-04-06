@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Table, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Table, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -636,3 +636,181 @@ class ResurfacingLogModel(Base):
     acted_on = Column(Boolean, default=False)
 
     user = relationship("User")
+
+
+# =========================================================================
+# Vault API Models
+# =========================================================================
+
+
+class VaultNoteModel(Base):
+    __tablename__ = "vault_notes"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    file_path = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    content = Column(Text, default="")
+    frontmatter = Column(JSONB, default={})
+    outgoing_links = Column(JSONB, default=[])
+    is_bookmarked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # Index for user + bookmark queries
+    __table_args__ = (
+        Index("ix_vault_notes_user_bookmark", "user_id", "is_bookmarked"),
+    )
+
+    def to_domain(self):
+        from src.domain.entities.vault import VaultNote
+        return VaultNote(
+            id=self.id, user_id=self.user_id, file_path=self.file_path,
+            title=self.title, content=self.content or "",
+            frontmatter=self.frontmatter or {},
+            outgoing_links=self.outgoing_links or [],
+            is_bookmarked=self.is_bookmarked or False,
+            created_at=self.created_at, updated_at=self.updated_at,
+        )
+
+    @classmethod
+    def from_domain(cls, note):
+        return cls(
+            id=note.id, user_id=note.user_id, file_path=note.file_path,
+            title=note.title, content=note.content,
+            frontmatter=note.frontmatter,
+            outgoing_links=note.outgoing_links,
+            is_bookmarked=note.is_bookmarked,
+            created_at=note.created_at, updated_at=note.updated_at,
+        )
+
+
+class VaultNoteVersionModel(Base):
+    __tablename__ = "vault_note_versions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    note_id = Column(UUID(as_uuid=True), ForeignKey("vault_notes.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(Text, default="")
+    frontmatter = Column(Text, default="{}")
+    created_at = Column(DateTime, default=datetime.now)
+
+    def to_domain(self):
+        from src.domain.entities.vault import VaultNoteVersion
+        return VaultNoteVersion(id=self.id, note_id=self.note_id, content=self.content or "", frontmatter=self.frontmatter or "{}", created_at=self.created_at)
+
+    @classmethod
+    def from_domain(cls, v):
+        return cls(id=v.id, note_id=v.note_id, content=v.content, frontmatter=v.frontmatter, created_at=v.created_at)
+
+
+class VaultDecisionModel(Base):
+    __tablename__ = "vault_decisions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String, nullable=False)
+    description = Column(Text, default="")
+    reasoning = Column(Text, default="")
+    alternatives = Column(Text, default="")
+    status = Column(String, default="active")
+    decided_at = Column(String, default="")
+    revisit_date = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+    def to_domain(self):
+        from src.domain.entities.vault import VaultDecision
+        return VaultDecision(id=self.id, user_id=self.user_id, title=self.title, description=self.description or "", reasoning=self.reasoning or "", alternatives=self.alternatives or "", status=self.status or "active", decided_at=self.decided_at or "", revisit_date=self.revisit_date, created_at=self.created_at)
+
+    @classmethod
+    def from_domain(cls, d):
+        return cls(id=d.id, user_id=d.user_id, title=d.title, description=d.description, reasoning=d.reasoning, alternatives=d.alternatives, status=d.status, decided_at=d.decided_at, revisit_date=d.revisit_date, created_at=d.created_at)
+
+
+class NoteAssociationModel(Base):
+    __tablename__ = "note_associations"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    note_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    object_type = Column(String, nullable=False)
+    object_id = Column(UUID(as_uuid=True), nullable=False)
+    relationship = Column(String, default="")
+    confidence = Column(Float, default=0.5)
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("ix_note_assoc_note", "note_id"),
+        Index("ix_note_assoc_object", "object_type", "object_id"),
+    )
+
+    def to_domain(self):
+        from src.domain.entities.vault import NoteAssociation
+        return NoteAssociation(id=self.id, user_id=self.user_id, note_id=self.note_id, object_type=self.object_type, object_id=self.object_id, relationship=self.relationship or "", confidence=self.confidence or 0.5, created_at=self.created_at)
+
+    @classmethod
+    def from_domain(cls, a):
+        return cls(id=a.id, user_id=a.user_id, note_id=a.note_id, object_type=a.object_type, object_id=a.object_id, relationship=a.relationship, confidence=a.confidence, created_at=a.created_at)
+
+
+class NoteMetadataModel(Base):
+    __tablename__ = "note_metadata"
+    note_id = Column(UUID(as_uuid=True), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    lifecycle = Column(String, default="active")
+    last_meaningful_edit = Column(DateTime, nullable=True)
+    view_count = Column(Integer, default=0)
+    importance_score = Column(Float, default=0.5)
+    distilled_at = Column(DateTime, nullable=True)
+    source_type = Column(String, default="manual")
+
+    def to_domain(self):
+        from src.domain.entities.vault import NoteMetadata
+        return NoteMetadata(note_id=self.note_id, user_id=self.user_id, lifecycle=self.lifecycle or "active", last_meaningful_edit=self.last_meaningful_edit, view_count=self.view_count or 0, importance_score=self.importance_score or 0.5, distilled_at=self.distilled_at, source_type=self.source_type or "manual")
+
+    @classmethod
+    def from_domain(cls, m):
+        return cls(note_id=m.note_id, user_id=m.user_id, lifecycle=m.lifecycle, last_meaningful_edit=m.last_meaningful_edit, view_count=m.view_count, importance_score=m.importance_score, distilled_at=m.distilled_at, source_type=m.source_type)
+
+
+class ActionItemModel(Base):
+    __tablename__ = "action_items"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    note_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    task = Column(Text, nullable=False)
+    assignee = Column(String, nullable=True)
+    deadline = Column(String, nullable=True)
+    priority = Column(String, default="medium")
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.now)
+
+    def to_domain(self):
+        from src.domain.entities.vault import ActionItem
+        return ActionItem(id=self.id, user_id=self.user_id, note_id=self.note_id, task=self.task, assignee=self.assignee, deadline=self.deadline, priority=self.priority or "medium", status=self.status or "pending", created_at=self.created_at)
+
+    @classmethod
+    def from_domain(cls, a):
+        return cls(id=a.id, user_id=a.user_id, note_id=a.note_id, task=a.task, assignee=a.assignee, deadline=a.deadline, priority=a.priority, status=a.status, created_at=a.created_at)
+
+
+class CalendarEventModel(Base):
+    __tablename__ = "calendar_events"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    note_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    title = Column(String, nullable=False)
+    event_date = Column(String, nullable=False)
+    event_type = Column(String, default="reminder")
+    description = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.now)
+
+    def to_domain(self):
+        from src.domain.entities.vault import CalendarEvent
+        return CalendarEvent(id=self.id, user_id=self.user_id, note_id=self.note_id, title=self.title, event_date=self.event_date, event_type=self.event_type or "reminder", description=self.description or "", created_at=self.created_at)
+
+    @classmethod
+    def from_domain(cls, e):
+        return cls(id=e.id, user_id=e.user_id, note_id=e.note_id, title=e.title, event_date=e.event_date, event_type=e.event_type, description=e.description, created_at=e.created_at)
+
+
+class VaultConfigModel(Base):
+    __tablename__ = "vault_config"
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    key = Column(String, primary_key=True)
+    value = Column(Text, default="")

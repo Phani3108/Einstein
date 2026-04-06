@@ -22,6 +22,7 @@ from src.api.routes.insights import create_insights_router
 from src.api.routes.reflection import create_reflection_router
 from src.api.routes.distillation import create_distillation_router
 from src.api.routes.ai_tools import create_ai_tools_router
+from src.api.routes.vault import create_vault_router
 from src.api.error_handlers import (
     domain_exception_handler,
     http_exception_handler,
@@ -176,6 +177,10 @@ def create_app() -> FastAPI:
                 "name": "tools",
                 "description": "Contextual AI tools — summarize, connect, prepare, extract, ask",
             },
+            {
+                "name": "vault",
+                "description": "Vault operations — notes, versions, bookmarks, tags, graph, config, decisions, templates",
+            },
         ],
         openapi_url="/api/v1/openapi.json",
         docs_url=None,  # We'll create a custom docs endpoint
@@ -268,6 +273,14 @@ def create_app() -> FastAPI:
         auth_middleware=container.auth_middleware(),
     )
     app.include_router(ai_tools_router)
+
+    # Vault routes (Phase 4A — desktop cloud migration)
+    vault_router = create_vault_router(
+        vault_repo=container.vault_repository(),
+        context_repo=container.context_event_repository(),
+        auth_middleware=container.auth_middleware(),
+    )
+    app.include_router(vault_router)
 
     # Customize OpenAPI schema
     def custom_openapi():
