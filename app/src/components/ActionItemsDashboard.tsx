@@ -299,8 +299,8 @@ export function ActionItemsDashboard() {
       <style>{`
         /* Wrapper */
         .ai-wrapper {
-          max-width: 960px;
-          margin: 0 auto;
+          max-width: none;
+          margin: 0;
           padding: 24px 28px 48px;
         }
 

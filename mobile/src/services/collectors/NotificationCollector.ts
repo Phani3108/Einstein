@@ -116,12 +116,43 @@ async function handleNotification(payload: NotificationPayload) {
   // Tier 0 extraction
   const tier0 = extractTier0(content);
 
+  // WhatsApp-specific parsing
+  const isWhatsApp = packageName === "com.whatsapp" || packageName === "com.whatsapp.w4b";
+  let eventSource = "notification";
+  let eventType = "notification";
+  let whatsappSender: string | undefined;
+  let whatsappGroup: string | undefined;
+
+  if (isWhatsApp) {
+    eventSource = "whatsapp";
+    eventType = "message";
+
+    // Parse WhatsApp notification text formats:
+    //   DM:    "Person: Message"
+    //   Group: "Person @ Group: Message"
+    const notifText = text || "";
+    const groupMatch = notifText.match(/^(.+?)\s*@\s*(.+?):\s*/);
+    const dmMatch = notifText.match(/^(.+?):\s*/);
+
+    if (groupMatch) {
+      whatsappSender = groupMatch[1].trim();
+      whatsappGroup = groupMatch[2].trim();
+    } else if (dmMatch) {
+      whatsappSender = dmMatch[1].trim();
+    }
+
+    // Add sender to extracted people if found and not already present
+    if (whatsappSender && !tier0.extracted_people.includes(whatsappSender)) {
+      tier0.extracted_people.push(whatsappSender);
+    }
+  }
+
   // Create event
   const event: ContextEvent = {
     id: `notif_${key}_${timestamp}`,
     user_id: "", // Will be set by cloud on ingest
-    source: "notification",
-    event_type: "notification",
+    source: eventSource,
+    event_type: eventType,
     content,
     timestamp: new Date(timestamp).toISOString(),
     structured_data: {
@@ -130,6 +161,8 @@ async function handleNotification(payload: NotificationPayload) {
       notification_title: title,
       notification_text: text,
       ...tier0,
+      ...(whatsappGroup ? { group: whatsappGroup } : {}),
+      ...(whatsappSender ? { sender: whatsappSender } : {}),
     },
     extracted_people: tier0.extracted_people,
     topics: [],

@@ -3,6 +3,7 @@ import { useApp } from "../lib/store";
 import { api } from "../lib/api";
 import { createNoteAndProcess } from "../lib/dataPipeline";
 import type { Note } from "../lib/api";
+import type { CommitmentData, PersonState, ProjectState } from "../lib/store";
 import {
   Brain,
   TrendingUp,
@@ -12,11 +13,23 @@ import {
   BarChart3,
   Sparkles,
   Target,
-  ArrowRight,
   RefreshCw,
   FileText,
   CheckSquare,
+  Sun,
+  ClipboardList,
+  Users,
+  BookOpen,
+  AlertCircle,
+  Loader2,
+  Briefcase,
+  Bell,
+  Heart,
 } from "lucide-react";
+import { MeetingBriefing } from "./MeetingBriefing";
+import { WeeklyReport } from "./WeeklyReport";
+import { FollowUpSuggestions } from "./FollowUpSuggestions";
+import { RelationshipDashboard } from "./RelationshipDashboard";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -63,6 +76,8 @@ interface ClientAnalysis {
   questionsCount: number;
   todosCount: number;
 }
+
+type DashboardTab = "overview" | "weekly" | "monthly" | "meeting_prep" | "weekly_report" | "followups" | "relationships";
 
 /* ------------------------------------------------------------------ */
 /*  Client-side analysis helpers                                       */
@@ -291,6 +306,27 @@ function analyzeNotes(notes: Note[]): ClientAnalysis {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "Unknown";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function daysAgo(dateStr: string | null | undefined): string {
+  if (!dateStr) return "No contact recorded";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const diff = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return `${diff} days ago`;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Skeleton loader                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -376,14 +412,258 @@ function Heatmap({ data }: { data: DayActivity[] }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  AI Lock Banner                                                     */
+/*  Commitments grouped by status                                      */
 /* ------------------------------------------------------------------ */
 
-function AiLock() {
+function CommitmentsTracker({ commitments }: { commitments: CommitmentData[] }) {
+  if (commitments.length === 0) {
+    return <p className="insights-empty">No commitments tracked yet.</p>;
+  }
+
+  const overdue = commitments.filter((c) => c.status === "overdue");
+  const pending = commitments.filter((c) => c.status === "pending" || c.status === "open");
+  const completed = commitments.filter((c) => c.status === "completed" || c.status === "done");
+
+  const renderGroup = (items: CommitmentData[], label: string, statusClass: string) => {
+    if (items.length === 0) return null;
+    return (
+      <div className="insights-commitment-group">
+        <div className={`insights-commitment-label ${statusClass}`}>
+          {label} ({items.length})
+        </div>
+        {items.slice(0, 5).map((c) => (
+          <div key={c.id} className={`insights-commitment-item ${statusClass}`}>
+            <span className="insights-commitment-content">{c.content}</span>
+            <span className="insights-commitment-meta">
+              {c.person_name && <span>{c.person_name}</span>}
+              {c.due_date && <span> &middot; {formatDate(c.due_date)}</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
-    <div className="insights-ai-lock">
-      <Sparkles size={16} />
-      <span>Connect AI to unlock deeper analysis</span>
+    <div className="insights-commitments">
+      {renderGroup(overdue, "Overdue", "commitment-overdue")}
+      {renderGroup(pending, "Pending", "commitment-pending")}
+      {renderGroup(completed, "Completed", "commitment-completed")}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Relationship Health                                                */
+/* ------------------------------------------------------------------ */
+
+function RelationshipHealth({
+  dormantPeople,
+  dormantProjects,
+}: {
+  dormantPeople: PersonState[];
+  dormantProjects: ProjectState[];
+}) {
+  if (dormantPeople.length === 0 && dormantProjects.length === 0) {
+    return <p className="insights-empty">All relationships are fresh. Great job staying connected!</p>;
+  }
+
+  return (
+    <div>
+      {dormantPeople.length > 0 && (
+        <div className="insights-relationship-section">
+          <h4 className="insights-section-label">Contacts needing attention</h4>
+          <ul className="insights-list">
+            {dormantPeople.slice(0, 5).map((p) => (
+              <li key={p.id} className="insights-list-item">
+                <Users size={14} style={{ color: "#ef4444", flexShrink: 0, marginTop: 2 }} />
+                <div style={{ flex: 1 }}>
+                  <strong>{p.name}</strong>
+                  {p.role && <span style={{ fontWeight: 400, marginLeft: 6, fontSize: "0.75rem", color: "var(--text-muted, #71717a)" }}>{p.role}{p.organization ? ` at ${p.organization}` : ""}</span>}
+                  <p>Last contact: {daysAgo(p.last_contact)}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {dormantProjects.length > 0 && (
+        <div className="insights-relationship-section" style={{ marginTop: dormantPeople.length > 0 ? 12 : 0 }}>
+          <h4 className="insights-section-label">Projects going stale</h4>
+          <ul className="insights-list">
+            {dormantProjects.slice(0, 5).map((p) => (
+              <li key={p.id} className="insights-list-item">
+                <BookOpen size={14} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 2 }} />
+                <div style={{ flex: 1 }}>
+                  <strong>{p.title}</strong>
+                  <p>Updated {daysAgo(p.updated_at)} &middot; Status: {p.status}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Reflection Tab Content (Weekly / Monthly)                          */
+/* ------------------------------------------------------------------ */
+
+function ReflectionTab({
+  label,
+  loadFn,
+}: {
+  label: string;
+  loadFn: () => Promise<any>;
+}) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await loadFn();
+      setData(result);
+    } catch (e: any) {
+      setError(e?.message || `Failed to load ${label.toLowerCase()}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadFn, label]);
+
+  if (!data && !loading && !error) {
+    return (
+      <div className="insights-reflection-empty">
+        <BookOpen size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
+        <h3>{label}</h3>
+        <p>Generate a {label.toLowerCase()} to reflect on your progress and patterns.</p>
+        <button className="insights-ai-btn" onClick={load}>
+          <Sparkles size={14} />
+          Load {label}
+        </button>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="insights-reflection-loading">
+        <Loader2 size={24} className="insights-spin" />
+        <p>Generating {label.toLowerCase()}...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="insights-reflection-error">
+        <AlertCircle size={18} />
+        <span>{error}</span>
+        <button className="insights-ai-btn" onClick={load} style={{ marginLeft: 12 }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  // Render the review/reflection data
+  return (
+    <div className="insights-reflection-content">
+      <div className="insights-reflection-header">
+        <h3>{label}</h3>
+        <button className="insights-refresh-btn" onClick={load} title={`Reload ${label.toLowerCase()}`}>
+          <RefreshCw size={14} />
+        </button>
+      </div>
+      {typeof data === "string" ? (
+        <div className="insights-reflection-text">{data}</div>
+      ) : (
+        <div className="insights-reflection-structured">
+          {data.summary && (
+            <div className="insights-reflection-section">
+              <h4>Summary</h4>
+              <p>{data.summary}</p>
+            </div>
+          )}
+          {data.highlights && data.highlights.length > 0 && (
+            <div className="insights-reflection-section">
+              <h4>Highlights</h4>
+              <ul>{data.highlights.map((h: string, i: number) => <li key={i}>{h}</li>)}</ul>
+            </div>
+          )}
+          {data.themes && data.themes.length > 0 && (
+            <div className="insights-reflection-section">
+              <h4>Themes</h4>
+              <div className="insights-tags-cloud">
+                {data.themes.map((t: string, i: number) => (
+                  <span key={i} className="insights-tag">{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {data.accomplishments && data.accomplishments.length > 0 && (
+            <div className="insights-reflection-section">
+              <h4>Accomplishments</h4>
+              <ul>{data.accomplishments.map((a: string, i: number) => <li key={i}>{a}</li>)}</ul>
+            </div>
+          )}
+          {data.challenges && data.challenges.length > 0 && (
+            <div className="insights-reflection-section">
+              <h4>Challenges</h4>
+              <ul>{data.challenges.map((c: string, i: number) => <li key={i}>{c}</li>)}</ul>
+            </div>
+          )}
+          {data.recommendations && data.recommendations.length > 0 && (
+            <div className="insights-reflection-section">
+              <h4>Recommendations</h4>
+              <ul>{data.recommendations.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
+            </div>
+          )}
+          {data.attention_needed && data.attention_needed.length > 0 && (
+            <div className="insights-reflection-section">
+              <h4>Needs Attention</h4>
+              <ul>{data.attention_needed.map((a: string, i: number) => <li key={i}>{a}</li>)}</ul>
+            </div>
+          )}
+          {data.patterns && (typeof data.patterns === "string" ? (
+            <div className="insights-reflection-section">
+              <h4>Patterns</h4>
+              <p>{data.patterns}</p>
+            </div>
+          ) : Array.isArray(data.patterns) && data.patterns.length > 0 && (
+            <div className="insights-reflection-section">
+              <h4>Patterns</h4>
+              <ul>{data.patterns.map((p: string, i: number) => <li key={i}>{p}</li>)}</ul>
+            </div>
+          ))}
+          {/* Fallback: render any remaining top-level string/array keys */}
+          {Object.entries(data).filter(([k]) =>
+            !["summary", "highlights", "themes", "accomplishments", "challenges", "recommendations", "attention_needed", "patterns"].includes(k)
+          ).map(([key, val]) => {
+            if (typeof val === "string" && val.length > 0) {
+              return (
+                <div key={key} className="insights-reflection-section">
+                  <h4>{key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</h4>
+                  <p>{val}</p>
+                </div>
+              );
+            }
+            if (Array.isArray(val) && val.length > 0 && typeof val[0] === "string") {
+              return (
+                <div key={key} className="insights-reflection-section">
+                  <h4>{key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</h4>
+                  <ul>{(val as string[]).map((item, i) => <li key={i}>{item}</li>)}</ul>
+                </div>
+              );
+            }
+            return null;
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -393,79 +673,49 @@ function AiLock() {
 /* ------------------------------------------------------------------ */
 
 export function InsightsDashboard() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const notes = state.notes;
 
-  const [aiAvailable, setAiAvailable] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiEntities, setAiEntities] = useState<{ type: string; value: string }[]>([]);
+  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [refreshing, setRefreshing] = useState(false);
 
   // Client-side analysis (memoized)
   const analysis = useMemo(() => analyzeNotes(notes), [notes]);
 
-  // Check AI availability
-  const checkAi = useCallback(async () => {
-    const health = await api.sidecarHealth();
-    setAiAvailable(health !== null && health.status === "ok");
-    return health !== null && health.status === "ok";
-  }, []);
+  // Backend intelligence data from store
+  const briefing = state.morningBriefing;
+  const commitments = state.commitments;
+  const dormantPeople = state.dormantPeople;
+  const dormantProjects = state.dormantProjects;
 
-  // Generate AI insights
-  const generateAiInsights = useCallback(async () => {
-    setAiLoading(true);
-    try {
-      const isAvailable = await checkAi();
-      if (!isAvailable) {
-        setAiLoading(false);
-        return;
-      }
-      // Combine all note content for entity extraction
-      const combined = notes
-        .slice(0, 20) // cap to avoid overloading
-        .map((n) => `# ${n.title}\n${n.content}`)
-        .join("\n\n---\n\n");
-      const entities = await api.extractEntities(combined);
-      setAiEntities(
-        entities.map((e) => ({ type: e.entity_type, value: e.entity_value }))
-      );
-    } catch {
-      // Silently fail — client-side still works
-    } finally {
-      setAiLoading(false);
-    }
-  }, [notes, checkAi]);
-
-  // Refresh handler
+  // Refresh handler — reload intelligence data from backend
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await checkAi();
-    // Analysis auto-refreshes via useMemo when notes change
-    setTimeout(() => setRefreshing(false), 400);
-  }, [checkAi]);
-
-  // Entity-based build ideas (from AI)
-  const entityIdeas: BuildIdea[] = useMemo(() => {
-    const typeCounts = new Map<string, string[]>();
-    for (const e of aiEntities) {
-      const vals = typeCounts.get(e.type) ?? [];
-      vals.push(e.value);
-      typeCounts.set(e.type, vals);
-    }
-    const ideas: BuildIdea[] = [];
-    for (const [type, values] of typeCounts) {
-      if (values.length >= 2) {
-        ideas.push({
-          title: `Explore ${type} relationships`,
-          reason: `Found ${values.length} ${type} entities: ${values.slice(0, 3).join(", ")}${values.length > 3 ? "..." : ""}`,
-          type: "entity",
-        });
+    try {
+      const [newBriefing, newCommitments, newDormantPeople, newDormantProjects] = await Promise.allSettled([
+        api.getMorningBriefing(),
+        api.getCommitments(),
+        api.getDormantPeople(),
+        api.getDormantProjects(),
+      ]);
+      if (newBriefing.status === "fulfilled" && newBriefing.value) {
+        dispatch({ type: "SET_BRIEFING", briefing: newBriefing.value });
       }
+      if (newCommitments.status === "fulfilled" && newCommitments.value) {
+        dispatch({ type: "SET_COMMITMENTS", commitments: newCommitments.value });
+      }
+      if (newDormantPeople.status === "fulfilled" && newDormantPeople.value) {
+        dispatch({ type: "SET_DORMANT_PEOPLE", people: newDormantPeople.value });
+      }
+      if (newDormantProjects.status === "fulfilled" && newDormantProjects.value) {
+        dispatch({ type: "SET_DORMANT_PROJECTS", projects: newDormantProjects.value });
+      }
+    } catch {
+      // Silently fail — existing data remains
+    } finally {
+      setRefreshing(false);
     }
-    return ideas.slice(0, 3);
-  }, [aiEntities]);
-
-  const allBuildIdeas = [...analysis.buildIdeas, ...entityIdeas];
+  }, [dispatch]);
 
   // Smart suggestions
   const suggestions = useMemo(() => {
@@ -528,303 +778,395 @@ export function InsightsDashboard() {
       </div>
 
       <div className="insights-wrapper">
-        {/* Stats Row */}
-        <div className="insights-stats-row">
-          <div className="insights-stat">
-            <span className="insights-stat-value">{notes.length}</span>
-            <span className="insights-stat-label">Total Notes</span>
-          </div>
-          <div className="insights-stat">
-            <span className="insights-stat-value">
-              {analysis.totalWords.toLocaleString()}
-            </span>
-            <span className="insights-stat-label">Total Words</span>
-          </div>
-          <div className="insights-stat">
-            <span className="insights-stat-value">
-              {analysis.avgNoteLength.toLocaleString()}
-            </span>
-            <span className="insights-stat-label">Avg Note Length</span>
-          </div>
-          <div className="insights-stat">
-            <span className="insights-stat-value">{analysis.mostActiveDay}</span>
-            <span className="insights-stat-label">Most Active Day</span>
-          </div>
+        {/* Tab Bar */}
+        <div className="insights-tab-bar">
+          <button
+            className={`insights-tab ${activeTab === "overview" ? "insights-tab-active" : ""}`}
+            onClick={() => setActiveTab("overview")}
+          >
+            <BarChart3 size={14} />
+            Overview
+          </button>
+          <button
+            className={`insights-tab ${activeTab === "weekly" ? "insights-tab-active" : ""}`}
+            onClick={() => setActiveTab("weekly")}
+          >
+            <Calendar size={14} />
+            Weekly Review
+          </button>
+          <button
+            className={`insights-tab ${activeTab === "monthly" ? "insights-tab-active" : ""}`}
+            onClick={() => setActiveTab("monthly")}
+          >
+            <BookOpen size={14} />
+            Monthly Reflection
+          </button>
+          <button
+            className={`insights-tab ${activeTab === "meeting_prep" ? "insights-tab-active" : ""}`}
+            onClick={() => setActiveTab("meeting_prep")}
+          >
+            <Briefcase size={14} />
+            Meeting Prep
+          </button>
+          <button
+            className={`insights-tab ${activeTab === "weekly_report" ? "insights-tab-active" : ""}`}
+            onClick={() => setActiveTab("weekly_report")}
+          >
+            <BarChart3 size={14} />
+            Weekly Report
+          </button>
+          <button
+            className={`insights-tab ${activeTab === "followups" ? "insights-tab-active" : ""}`}
+            onClick={() => setActiveTab("followups")}
+          >
+            <Bell size={14} />
+            Follow-ups
+          </button>
+          <button
+            className={`insights-tab ${activeTab === "relationships" ? "insights-tab-active" : ""}`}
+            onClick={() => setActiveTab("relationships")}
+          >
+            <Heart size={14} />
+            Relationships
+          </button>
         </div>
 
-        {/* AI Generate Button */}
-        <div className="insights-ai-bar">
-          {aiAvailable ? (
-            <button
-              className="insights-ai-btn"
-              onClick={generateAiInsights}
-              disabled={aiLoading}
-            >
-              {aiLoading ? (
-                <RefreshCw size={14} className="insights-spin" />
-              ) : (
-                <Sparkles size={14} />
-              )}
-              {aiLoading ? "Analyzing..." : "Generate AI Insights"}
-            </button>
-          ) : (
-            <button className="insights-ai-btn insights-ai-btn-check" onClick={checkAi}>
-              <Sparkles size={14} />
-              Check AI Connection
-            </button>
-          )}
-          {aiEntities.length > 0 && (
-            <span className="insights-ai-badge">
-              {aiEntities.length} entities extracted
-            </span>
-          )}
-        </div>
-
-        {/* Cards Grid */}
-        {notes.length === 0 ? (
-          <div className="insights-empty-state">
-            <Brain size={48} />
-            <h2>No notes yet</h2>
-            <p>Create some notes and come back for insights about your knowledge base.</p>
-          </div>
-        ) : aiLoading ? (
-          <div className="insights-grid">
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </div>
-        ) : (
-          <div className="insights-grid">
-            {/* What to Build Next */}
-            <InsightCard
-              icon={<Lightbulb size={18} />}
-              title="What to Build Next"
-              accentColor="#f59e0b"
-            >
-              {allBuildIdeas.length > 0 ? (
-                <ul className="insights-list">
-                  {allBuildIdeas.map((idea, i) => (
-                    <li key={i} className="insights-list-item">
-                      <span
-                        className="insights-idea-type"
-                        data-type={idea.type}
-                      >
-                        {idea.type}
-                      </span>
-                      <div style={{ flex: 1 }}>
-                        <strong>{idea.title}</strong>
-                        <p>{idea.reason}</p>
-                      </div>
-                      <div className="insights-actions">
-                        <button
-                          className="insights-action-btn"
-                          title="Create Note"
-                          onClick={async () => {
-                            const content = `# ${idea.title}\n\n${idea.reason}\n\n## Plan\n\n- [ ] \n\n## Notes\n\n`;
-                            const result = await createNoteAndProcess(idea.title, content, dispatch, { source: "insight-build-idea" });
-                            dispatch({ type: "SET_ACTIVE_NOTE", id: result.note.id });
-                            dispatch({ type: "SET_SIDEBAR_VIEW", view: "files" });
-                          }}
-                        >
-                          <FileText size={12} />
-                        </button>
-                        <button
-                          className="insights-action-btn"
-                          title="Create Task"
-                          onClick={async () => {
-                            await api.saveActionItems("insight", [{
-                              task: `Build: ${idea.title}`,
-                              assignee: null,
-                              deadline: null,
-                              priority: "medium",
-                            }]);
-                            // Reload action items
-                            const items = await api.getActionItems();
-                            dispatch({ type: "SET_ACTION_ITEMS", items: items.map(item => ({
-                              ...item,
-                              priority: item.priority as "high" | "medium" | "low",
-                              status: item.status as "pending" | "completed" | "cancelled",
-                              source_title: "Insight",
-                            })) });
-                          }}
-                        >
-                          <CheckSquare size={12} />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="insights-empty">
-                  Add more notes with tags and questions to generate project ideas.
-                </p>
-              )}
-            </InsightCard>
-
-            {/* Knowledge Gaps */}
-            <InsightCard
-              icon={<Target size={18} />}
-              title="Knowledge Gaps"
-              accentColor="#ef4444"
-            >
-              {analysis.knowledgeGaps.length > 0 ? (
-                <ul className="insights-list">
-                  {analysis.knowledgeGaps.slice(0, 5).map((gap, i) => (
-                    <li key={i} className="insights-list-item">
-                      <span
-                        className="insights-depth-badge"
-                        data-depth={gap.depth}
-                      >
-                        {gap.depth}
-                      </span>
-                      <div style={{ flex: 1 }}>
-                        <strong>{gap.topic}</strong>
-                        <p>
-                          Mentioned {gap.mentions} times but content is thin.
-                        </p>
-                      </div>
-                      <button
-                        className="insights-action-btn"
-                        title="Create Note to fill gap"
-                        onClick={async () => {
-                          const content = `# ${gap.topic}\n\nThis topic has been mentioned ${gap.mentions} times across notes but needs deeper exploration.\n\n## Key Questions\n\n- \n\n## Research\n\n`;
-                          const result = await createNoteAndProcess(gap.topic, content, dispatch, { source: "insight-knowledge-gap" });
-                          dispatch({ type: "SET_ACTIVE_NOTE", id: result.note.id });
-                          dispatch({ type: "SET_SIDEBAR_VIEW", view: "files" });
-                        }}
-                      >
-                        <FileText size={12} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="insights-empty">
-                  No knowledge gaps detected. Your notes are well-covered!
-                </p>
-              )}
-            </InsightCard>
-
-            {/* Trending Topics */}
-            <InsightCard
-              icon={<TrendingUp size={18} />}
-              title="Trending Topics"
-              accentColor="#10b981"
-            >
-              {analysis.trendingTopics.length > 0 ? (
-                <div className="insights-tags-cloud">
-                  {analysis.trendingTopics.map((t) => (
-                    <span key={t.tag} className="insights-tag">
-                      #{t.tag}
-                      <span className="insights-tag-count">{t.count}</span>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="insights-empty">
-                  No trending topics in the last 2 weeks.
-                </p>
-              )}
-              {analysis.tagFrequency.length > 0 && (
-                <div className="insights-all-tags">
-                  <h4>All-time top tags</h4>
-                  <div className="insights-bar-list">
-                    {analysis.tagFrequency.slice(0, 6).map((t) => (
-                      <div key={t.tag} className="insights-bar-row">
-                        <span className="insights-bar-label">#{t.tag}</span>
-                        <div className="insights-bar-track">
-                          <div
-                            className="insights-bar-fill"
-                            style={{
-                              width: `${(t.count / (analysis.tagFrequency[0]?.count || 1)) * 100}%`,
-                            }}
-                          />
-                        </div>
-                        <span className="insights-bar-value">{t.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </InsightCard>
-
-            {/* Connection Opportunities */}
-            <InsightCard
-              icon={<Link2 size={18} />}
-              title="Connection Opportunities"
-              accentColor="#8b5cf6"
-            >
-              {analysis.connections.length > 0 ? (
-                <ul className="insights-list">
-                  {analysis.connections.map((c, i) => (
-                    <li key={i} className="insights-connection-item">
-                      <div className="insights-connection-pair">
-                        <span className="insights-connection-note">
-                          {c.noteA}
-                        </span>
-                        <Link2 size={12} />
-                        <span className="insights-connection-note">
-                          {c.noteB}
-                        </span>
-                      </div>
-                      <p className="insights-connection-reason">
-                        Shared: {c.sharedTerms.join(", ")}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="insights-empty">
-                  No unlinked connections found. Your notes are well-connected!
-                </p>
-              )}
-            </InsightCard>
-
-            {/* Activity Heatmap */}
-            <InsightCard
-              icon={<Calendar size={18} />}
-              title="Activity Heatmap"
-              accentColor="#06b6d4"
-            >
-              <Heatmap data={analysis.heatmap} />
-              <div className="insights-heatmap-legend">
-                <span>Less</span>
-                <div className="insights-heatmap-scale">
-                  <div style={{ background: "var(--bg-tertiary, #0f0f12)" }} />
-                  <div style={{ background: "rgba(59,130,246,0.25)" }} />
-                  <div style={{ background: "rgba(59,130,246,0.5)" }} />
-                  <div style={{ background: "rgba(59,130,246,0.75)" }} />
-                  <div style={{ background: "rgba(59,130,246,0.9)" }} />
-                </div>
-                <span>More</span>
+        {/* Tab Content */}
+        {activeTab === "overview" && (
+          <>
+            {/* Stats Row */}
+            <div className="insights-stats-row">
+              <div className="insights-stat">
+                <span className="insights-stat-value">{notes.length}</span>
+                <span className="insights-stat-label">Total Notes</span>
               </div>
-            </InsightCard>
+              <div className="insights-stat">
+                <span className="insights-stat-value">
+                  {analysis.totalWords.toLocaleString()}
+                </span>
+                <span className="insights-stat-label">Total Words</span>
+              </div>
+              <div className="insights-stat">
+                <span className="insights-stat-value">
+                  {analysis.avgNoteLength.toLocaleString()}
+                </span>
+                <span className="insights-stat-label">Avg Note Length</span>
+              </div>
+              <div className="insights-stat">
+                <span className="insights-stat-value">{analysis.mostActiveDay}</span>
+                <span className="insights-stat-label">Most Active Day</span>
+              </div>
+            </div>
 
-            {/* Smart Suggestions */}
-            <InsightCard
-              icon={<BarChart3 size={18} />}
-              title="Smart Suggestions"
-              accentColor="#f97316"
-            >
-              {suggestions.length > 0 ? (
-                <ul className="insights-suggestions">
-                  {suggestions.map((s, i) => (
-                    <li key={i}>
-                      {s.icon}
-                      <span>{s.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="insights-empty">
-                  Looking good! No suggestions right now.
-                </p>
-              )}
-              {!aiAvailable && <AiLock />}
-            </InsightCard>
-          </div>
+            {/* Cards Grid */}
+            {notes.length === 0 ? (
+              <div className="insights-empty-state">
+                <Brain size={48} />
+                <h2>No notes yet</h2>
+                <p>Create some notes and come back for insights about your knowledge base.</p>
+              </div>
+            ) : (
+              <div className="insights-grid">
+                {/* Morning Briefing */}
+                <InsightCard
+                  icon={<Sun size={18} />}
+                  title="Morning Briefing"
+                  accentColor="#3b82f6"
+                >
+                  {briefing ? (
+                    <div>
+                      {briefing.summary && (
+                        <p style={{ marginTop: 0, marginBottom: 12, lineHeight: 1.6 }}>{briefing.summary}</p>
+                      )}
+                      {briefing.attention_items && briefing.attention_items.length > 0 && (
+                        <div>
+                          <h4 className="insights-section-label">Attention items</h4>
+                          <ul className="insights-attention-list">
+                            {briefing.attention_items.map((item: any, i: number) => (
+                              <li key={i}>
+                                <AlertCircle size={12} />
+                                <span>{typeof item === "string" ? item : item.description || item.title || JSON.stringify(item)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {briefing.today_event_count > 0 && (
+                        <p className="insights-meta-line">
+                          <Calendar size={12} /> {briefing.today_event_count} event{briefing.today_event_count !== 1 ? "s" : ""} today
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="insights-empty">
+                      No briefing available yet. Hit refresh to generate one.
+                    </p>
+                  )}
+                </InsightCard>
+
+                {/* Commitments Tracker */}
+                <InsightCard
+                  icon={<ClipboardList size={18} />}
+                  title="Commitments Tracker"
+                  accentColor="#8b5cf6"
+                >
+                  <CommitmentsTracker commitments={commitments} />
+                </InsightCard>
+
+                {/* Relationship Health */}
+                <InsightCard
+                  icon={<Users size={18} />}
+                  title="Relationship Health"
+                  accentColor="#ef4444"
+                >
+                  <RelationshipHealth
+                    dormantPeople={dormantPeople}
+                    dormantProjects={dormantProjects}
+                  />
+                </InsightCard>
+
+                {/* What to Build Next */}
+                <InsightCard
+                  icon={<Lightbulb size={18} />}
+                  title="What to Build Next"
+                  accentColor="#f59e0b"
+                >
+                  {analysis.buildIdeas.length > 0 ? (
+                    <ul className="insights-list">
+                      {analysis.buildIdeas.map((idea, i) => (
+                        <li key={i} className="insights-list-item">
+                          <span
+                            className="insights-idea-type"
+                            data-type={idea.type}
+                          >
+                            {idea.type}
+                          </span>
+                          <div style={{ flex: 1 }}>
+                            <strong>{idea.title}</strong>
+                            <p>{idea.reason}</p>
+                          </div>
+                          <div className="insights-actions">
+                            <button
+                              className="insights-action-btn"
+                              title="Create Note"
+                              onClick={async () => {
+                                const content = `# ${idea.title}\n\n${idea.reason}\n\n## Plan\n\n- [ ] \n\n## Notes\n\n`;
+                                const result = await createNoteAndProcess(idea.title, content, dispatch, { source: "insight-build-idea" });
+                                dispatch({ type: "SET_ACTIVE_NOTE", id: result.note.id });
+                                dispatch({ type: "SET_SIDEBAR_VIEW", view: "files" });
+                              }}
+                            >
+                              <FileText size={12} />
+                            </button>
+                            <button
+                              className="insights-action-btn"
+                              title="Create Task"
+                              onClick={async () => {
+                                await api.saveActionItems("insight", [{
+                                  task: `Build: ${idea.title}`,
+                                  assignee: null,
+                                  deadline: null,
+                                  priority: "medium",
+                                }]);
+                                const items = await api.getActionItems();
+                                dispatch({ type: "SET_ACTION_ITEMS", items: items.map(item => ({
+                                  ...item,
+                                  priority: item.priority as "high" | "medium" | "low",
+                                  status: item.status as "pending" | "completed" | "cancelled",
+                                  source_title: "Insight",
+                                })) });
+                              }}
+                            >
+                              <CheckSquare size={12} />
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="insights-empty">
+                      Add more notes with tags and questions to generate project ideas.
+                    </p>
+                  )}
+                </InsightCard>
+
+                {/* Knowledge Gaps */}
+                <InsightCard
+                  icon={<Target size={18} />}
+                  title="Knowledge Gaps"
+                  accentColor="#ef4444"
+                >
+                  {analysis.knowledgeGaps.length > 0 ? (
+                    <ul className="insights-list">
+                      {analysis.knowledgeGaps.slice(0, 5).map((gap, i) => (
+                        <li key={i} className="insights-list-item">
+                          <span
+                            className="insights-depth-badge"
+                            data-depth={gap.depth}
+                          >
+                            {gap.depth}
+                          </span>
+                          <div style={{ flex: 1 }}>
+                            <strong>{gap.topic}</strong>
+                            <p>
+                              Mentioned {gap.mentions} times but content is thin.
+                            </p>
+                          </div>
+                          <button
+                            className="insights-action-btn"
+                            title="Create Note to fill gap"
+                            onClick={async () => {
+                              const content = `# ${gap.topic}\n\nThis topic has been mentioned ${gap.mentions} times across notes but needs deeper exploration.\n\n## Key Questions\n\n- \n\n## Research\n\n`;
+                              const result = await createNoteAndProcess(gap.topic, content, dispatch, { source: "insight-knowledge-gap" });
+                              dispatch({ type: "SET_ACTIVE_NOTE", id: result.note.id });
+                              dispatch({ type: "SET_SIDEBAR_VIEW", view: "files" });
+                            }}
+                          >
+                            <FileText size={12} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="insights-empty">
+                      No knowledge gaps detected. Your notes are well-covered!
+                    </p>
+                  )}
+                </InsightCard>
+
+                {/* Trending Topics */}
+                <InsightCard
+                  icon={<TrendingUp size={18} />}
+                  title="Trending Topics"
+                  accentColor="#10b981"
+                >
+                  {analysis.trendingTopics.length > 0 ? (
+                    <div className="insights-tags-cloud">
+                      {analysis.trendingTopics.map((t) => (
+                        <span key={t.tag} className="insights-tag">
+                          #{t.tag}
+                          <span className="insights-tag-count">{t.count}</span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="insights-empty">
+                      No trending topics in the last 2 weeks.
+                    </p>
+                  )}
+                  {analysis.tagFrequency.length > 0 && (
+                    <div className="insights-all-tags">
+                      <h4>All-time top tags</h4>
+                      <div className="insights-bar-list">
+                        {analysis.tagFrequency.slice(0, 6).map((t) => (
+                          <div key={t.tag} className="insights-bar-row">
+                            <span className="insights-bar-label">#{t.tag}</span>
+                            <div className="insights-bar-track">
+                              <div
+                                className="insights-bar-fill"
+                                style={{
+                                  width: `${(t.count / (analysis.tagFrequency[0]?.count || 1)) * 100}%`,
+                                }}
+                              />
+                            </div>
+                            <span className="insights-bar-value">{t.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </InsightCard>
+
+                {/* Connection Opportunities */}
+                <InsightCard
+                  icon={<Link2 size={18} />}
+                  title="Connection Opportunities"
+                  accentColor="#8b5cf6"
+                >
+                  {analysis.connections.length > 0 ? (
+                    <ul className="insights-list">
+                      {analysis.connections.map((c, i) => (
+                        <li key={i} className="insights-connection-item">
+                          <div className="insights-connection-pair">
+                            <span className="insights-connection-note">
+                              {c.noteA}
+                            </span>
+                            <Link2 size={12} />
+                            <span className="insights-connection-note">
+                              {c.noteB}
+                            </span>
+                          </div>
+                          <p className="insights-connection-reason">
+                            Shared: {c.sharedTerms.join(", ")}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="insights-empty">
+                      No unlinked connections found. Your notes are well-connected!
+                    </p>
+                  )}
+                </InsightCard>
+
+                {/* Activity Heatmap */}
+                <InsightCard
+                  icon={<Calendar size={18} />}
+                  title="Activity Heatmap"
+                  accentColor="#06b6d4"
+                >
+                  <Heatmap data={analysis.heatmap} />
+                  <div className="insights-heatmap-legend">
+                    <span>Less</span>
+                    <div className="insights-heatmap-scale">
+                      <div style={{ background: "var(--bg-tertiary, #0f0f12)" }} />
+                      <div style={{ background: "rgba(59,130,246,0.25)" }} />
+                      <div style={{ background: "rgba(59,130,246,0.5)" }} />
+                      <div style={{ background: "rgba(59,130,246,0.75)" }} />
+                      <div style={{ background: "rgba(59,130,246,0.9)" }} />
+                    </div>
+                    <span>More</span>
+                  </div>
+                </InsightCard>
+
+                {/* Smart Suggestions */}
+                <InsightCard
+                  icon={<BarChart3 size={18} />}
+                  title="Smart Suggestions"
+                  accentColor="#f97316"
+                >
+                  {suggestions.length > 0 ? (
+                    <ul className="insights-suggestions">
+                      {suggestions.map((s, i) => (
+                        <li key={i}>
+                          {s.icon}
+                          <span>{s.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="insights-empty">
+                      Looking good! No suggestions right now.
+                    </p>
+                  )}
+                </InsightCard>
+              </div>
+            )}
+          </>
         )}
+
+        {activeTab === "weekly" && (
+          <ReflectionTab label="Weekly Review" loadFn={api.getWeeklyReview} />
+        )}
+
+        {activeTab === "monthly" && (
+          <ReflectionTab label="Monthly Reflection" loadFn={api.getMonthlyReflection} />
+        )}
+
+        {activeTab === "meeting_prep" && <MeetingBriefing />}
+        {activeTab === "weekly_report" && <WeeklyReport />}
+        {activeTab === "followups" && <FollowUpSuggestions />}
+        {activeTab === "relationships" && <RelationshipDashboard />}
       </div>
 
       <style>{`
@@ -833,6 +1175,46 @@ export function InsightsDashboard() {
           max-width: 900px;
           margin: 0 auto;
           padding: 24px 28px 48px;
+        }
+
+        /* Tab bar */
+        .insights-tab-bar {
+          display: flex;
+          gap: 4px;
+          margin-bottom: 20px;
+          padding: 4px;
+          background: var(--bg-secondary, #18181b);
+          border: 1px solid var(--border, #27272a);
+          border-radius: 10px;
+          flex-wrap: wrap;
+        }
+        .insights-tab {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          border: none;
+          border-radius: 7px;
+          background: none;
+          color: var(--text-muted, #a1a1aa);
+          font-size: 0.82rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s;
+          flex: 1;
+          justify-content: center;
+        }
+        .insights-tab:hover {
+          color: var(--text-primary, #e4e4e7);
+          background: var(--bg-tertiary, #0f0f12);
+        }
+        .insights-tab-active {
+          background: var(--accent, #3b82f6);
+          color: #fff;
+        }
+        .insights-tab-active:hover {
+          background: var(--accent, #3b82f6);
+          color: #fff;
         }
 
         /* Refresh button */
@@ -895,50 +1277,6 @@ export function InsightsDashboard() {
           letter-spacing: 0.04em;
         }
 
-        /* AI bar */
-        .insights-ai-bar {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 20px;
-        }
-        .insights-ai-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 18px;
-          border: none;
-          border-radius: 8px;
-          background: var(--accent, #3b82f6);
-          color: #fff;
-          font-size: 0.85rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: opacity 0.15s, transform 0.1s;
-        }
-        .insights-ai-btn:hover {
-          opacity: 0.9;
-        }
-        .insights-ai-btn:active {
-          transform: scale(0.97);
-        }
-        .insights-ai-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-        .insights-ai-btn-check {
-          background: var(--bg-secondary, #18181b);
-          border: 1px solid var(--border, #27272a);
-          color: var(--text-muted, #a1a1aa);
-        }
-        .insights-ai-badge {
-          font-size: 0.78rem;
-          color: var(--accent, #3b82f6);
-          background: rgba(59, 130, 246, 0.1);
-          padding: 4px 10px;
-          border-radius: 12px;
-        }
-
         /* Cards grid */
         .insights-grid {
           display: grid;
@@ -978,6 +1316,118 @@ export function InsightsDashboard() {
           font-size: 0.85rem;
           color: var(--text-secondary, #a1a1aa);
           line-height: 1.6;
+        }
+
+        /* Section label */
+        .insights-section-label {
+          margin: 0 0 8px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: var(--text-muted, #71717a);
+        }
+
+        /* Attention list (briefing) */
+        .insights-attention-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+        .insights-attention-list li {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          padding: 6px 0;
+          font-size: 0.82rem;
+          color: var(--text-secondary, #a1a1aa);
+        }
+        .insights-attention-list li svg {
+          color: #f59e0b;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        /* Meta line */
+        .insights-meta-line {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 12px;
+          padding-top: 10px;
+          border-top: 1px solid var(--border, #27272a);
+          font-size: 0.78rem;
+          color: var(--text-muted, #71717a);
+        }
+        .insights-meta-line svg {
+          flex-shrink: 0;
+        }
+
+        /* Commitments */
+        .insights-commitments {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .insights-commitment-group {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .insights-commitment-label {
+          font-size: 0.72rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 2px 8px;
+          border-radius: 4px;
+          display: inline-block;
+          width: fit-content;
+          margin-bottom: 4px;
+        }
+        .insights-commitment-label.commitment-overdue {
+          background: rgba(239, 68, 68, 0.15);
+          color: #ef4444;
+        }
+        .insights-commitment-label.commitment-pending {
+          background: rgba(245, 158, 11, 0.15);
+          color: #f59e0b;
+        }
+        .insights-commitment-label.commitment-completed {
+          background: rgba(16, 185, 129, 0.15);
+          color: #10b981;
+        }
+        .insights-commitment-item {
+          padding: 6px 10px;
+          border-radius: 6px;
+          border-left: 3px solid transparent;
+        }
+        .insights-commitment-item.commitment-overdue {
+          border-left-color: #ef4444;
+          background: rgba(239, 68, 68, 0.05);
+        }
+        .insights-commitment-item.commitment-pending {
+          border-left-color: #f59e0b;
+          background: rgba(245, 158, 11, 0.05);
+        }
+        .insights-commitment-item.commitment-completed {
+          border-left-color: #10b981;
+          background: rgba(16, 185, 129, 0.05);
+        }
+        .insights-commitment-content {
+          display: block;
+          font-size: 0.82rem;
+          color: var(--text-primary, #e4e4e7);
+          margin-bottom: 2px;
+        }
+        .insights-commitment-meta {
+          font-size: 0.72rem;
+          color: var(--text-muted, #71717a);
+        }
+
+        /* Relationship sections */
+        .insights-relationship-section {
+          margin-bottom: 4px;
         }
 
         /* Lists */
@@ -1259,20 +1709,6 @@ export function InsightsDashboard() {
           color: var(--card-accent, var(--accent, #3b82f6));
         }
 
-        /* AI lock banner */
-        .insights-ai-lock {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 14px;
-          margin-top: 14px;
-          background: rgba(139, 92, 246, 0.08);
-          border: 1px dashed rgba(139, 92, 246, 0.3);
-          border-radius: 8px;
-          font-size: 0.78rem;
-          color: #8b5cf6;
-        }
-
         /* Empty text */
         .insights-empty {
           color: var(--text-muted, #71717a);
@@ -1321,6 +1757,126 @@ export function InsightsDashboard() {
           100% { background-position: -200% 0; }
         }
 
+        /* Reflection tab content */
+        .insights-reflection-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 48px 24px;
+          text-align: center;
+          color: var(--text-muted, #71717a);
+        }
+        .insights-reflection-empty h3 {
+          margin: 0 0 8px;
+          font-size: 1.1rem;
+          color: var(--text-secondary, #a1a1aa);
+        }
+        .insights-reflection-empty p {
+          margin: 0 0 20px;
+          font-size: 0.88rem;
+          max-width: 400px;
+        }
+        .insights-reflection-loading {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 64px 24px;
+          color: var(--text-muted, #71717a);
+          gap: 12px;
+        }
+        .insights-reflection-error {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 14px 18px;
+          background: rgba(239, 68, 68, 0.08);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          border-radius: 10px;
+          color: #ef4444;
+          font-size: 0.85rem;
+        }
+        .insights-reflection-content {
+          background: var(--bg-secondary, #18181b);
+          border: 1px solid var(--border, #27272a);
+          border-radius: 12px;
+          padding: 24px;
+        }
+        .insights-reflection-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 20px;
+        }
+        .insights-reflection-header h3 {
+          margin: 0;
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: var(--text-primary, #e4e4e7);
+        }
+        .insights-reflection-text {
+          font-size: 0.88rem;
+          color: var(--text-secondary, #a1a1aa);
+          line-height: 1.7;
+          white-space: pre-wrap;
+        }
+        .insights-reflection-structured {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+        .insights-reflection-section h4 {
+          margin: 0 0 8px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: var(--accent, #3b82f6);
+        }
+        .insights-reflection-section p {
+          margin: 0;
+          font-size: 0.85rem;
+          color: var(--text-secondary, #a1a1aa);
+          line-height: 1.7;
+        }
+        .insights-reflection-section ul {
+          margin: 0;
+          padding-left: 18px;
+        }
+        .insights-reflection-section li {
+          font-size: 0.85rem;
+          color: var(--text-secondary, #a1a1aa);
+          line-height: 1.6;
+          margin-bottom: 4px;
+        }
+
+        /* AI button (shared) */
+        .insights-ai-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 18px;
+          border: none;
+          border-radius: 8px;
+          background: var(--accent, #3b82f6);
+          color: #fff;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: opacity 0.15s, transform 0.1s;
+        }
+        .insights-ai-btn:hover {
+          opacity: 0.9;
+        }
+        .insights-ai-btn:active {
+          transform: scale(0.97);
+        }
+        .insights-ai-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
         /* Responsive */
         @media (max-width: 700px) {
           .insights-stats-row {
@@ -1328,6 +1884,9 @@ export function InsightsDashboard() {
           }
           .insights-grid {
             grid-template-columns: 1fr;
+          }
+          .insights-tab-bar {
+            flex-wrap: wrap;
           }
         }
       `}</style>

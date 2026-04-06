@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
+import sqlalchemy as sa
 from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Table, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.declarative import declarative_base
@@ -814,3 +815,81 @@ class VaultConfigModel(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
     key = Column(String, primary_key=True)
     value = Column(Text, default="")
+
+
+# =========================================================================
+# Integration Connector Models (Phase 1A)
+# =========================================================================
+
+
+class IntegrationCredentialModel(Base):
+    """OAuth credentials and sync state for a third-party integration."""
+
+    __tablename__ = "integration_credentials"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    provider = Column(String(50), nullable=False)
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=True)
+    token_expiry = Column(DateTime, nullable=True)
+    scopes = Column(ARRAY(String), default=[])
+    integration_metadata = Column(JSONB, default={})
+    last_sync_at = Column(DateTime, nullable=True)
+    sync_cursor = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        Index("ix_integration_credentials_user_id", "user_id"),
+        sa.UniqueConstraint("user_id", "provider", name="uq_integration_user_provider"),
+    )
+
+
+class ProjectEventLinkModel(Base):
+    """Auto-linking between projects and context events."""
+
+    __tablename__ = "project_event_links"
+
+    project_id = Column(UUID(as_uuid=True), primary_key=True)
+    event_id = Column(UUID(as_uuid=True), primary_key=True)
+    confidence = Column(Float, default=0.5)
+    method = Column(String(30), default="auto")
+    created_at = Column(DateTime, default=datetime.now)
+
+
+class ActionLogModel(Base):
+    """Outbound action log for tracking actions taken via connectors."""
+
+    __tablename__ = "action_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    action_type = Column(String(50), nullable=False)
+    provider = Column(String(50), nullable=True)
+    params = Column(JSONB, nullable=False, default={})
+    result = Column(JSONB, nullable=True)
+    status = Column(String(20), default="pending")
+    executed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+    user = relationship("User")
+
+
+class AudioUploadModel(Base):
+    """Audio file uploads for transcription processing."""
+
+    __tablename__ = "audio_uploads"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    event_id = Column(UUID(as_uuid=True), nullable=True)
+    file_url = Column(Text, nullable=False)
+    duration_seconds = Column(Integer, nullable=True)
+    status = Column(String(20), default="pending")
+    created_at = Column(DateTime, default=datetime.now)
+
+    user = relationship("User")

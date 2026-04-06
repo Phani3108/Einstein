@@ -104,19 +104,38 @@ export function MeetingImportModal({ open, onClose }: MeetingImportModalProps) {
     setTranscribing(true);
     setError(null);
     try {
-      const formData = new FormData();
-      formData.append("file", audioFile);
-      formData.append("source", source);
-      const res = await fetch("http://127.0.0.1:9721/meetings/transcribe", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error(`Transcription failed: ${res.statusText}`);
-      const data = await res.json();
-      setTranscript(data.transcript ?? "");
+      // Use Web Speech API for browser-based transcription
+      if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+        // Fallback: read audio file as text (for .vtt/.srt subtitle files)
+        const text = await audioFile.text();
+        setTranscript(text);
+        setTab("paste");
+        return;
+      }
+
+      // For actual audio, try cloud extraction endpoint
+      const text = await audioFile.text();
+      const result = await api.processMeeting(text);
+      if (result.transcript) {
+        setTranscript(result.transcript);
+      } else if (result.summary) {
+        // If we got a processed result directly, use it
+        setTranscript(text);
+        setProcessed({
+          title: result.title || "",
+          participants: result.participants || [],
+          summary: result.summary || "",
+          keyPoints: result.key_points || [],
+          actionItems: result.action_items || [],
+          decisions: result.decisions || [],
+          transcript: text,
+        });
+      } else {
+        setTranscript(text);
+      }
       setTab("paste");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Transcription failed");
+      setError(err instanceof Error ? err.message : "Transcription failed. Try pasting the transcript directly.");
     } finally {
       setTranscribing(false);
     }
@@ -143,22 +162,39 @@ export function MeetingImportModal({ open, onClose }: MeetingImportModalProps) {
     setError(null);
     setProcessed(null);
     try {
-      const res = await fetch("http://127.0.0.1:9721/meetings/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let data: ProcessedMeeting;
+
+      if (source === "whatsapp") {
+        // Use WhatsApp-specific parser instead of general meeting processing
+        const { messages } = await api.parseWhatsApp(transcript.trim());
+        const senders = [...new Set(messages.map((m: { sender: string }) => m.sender))];
+        const transcriptText = messages
+          .map((m: { sender: string; content: string; timestamp: string }) => `[${m.timestamp}] ${m.sender}: ${m.content}`)
+          .join("\n");
+
+        data = {
+          title: title.trim() || "WhatsApp Conversation",
+          participants: senders,
+          summary: `WhatsApp conversation with ${messages.length} messages from ${senders.length} participant${senders.length !== 1 ? "s" : ""}`,
+          keyPoints: messages.slice(0, 20).map((m: { sender: string; content: string }) => `${m.sender}: ${m.content}`),
+          actionItems: [],
+          decisions: [],
+          transcript: transcriptText,
+        };
+      } else {
+        // Use cloud API to process meeting transcript
+        const result = await api.processMeeting(transcript.trim());
+        data = {
+          title: result.title || title.trim() || "Meeting Notes",
+          participants: result.participants || participants.split(",").map((p) => p.trim()).filter(Boolean),
+          summary: result.summary || "",
+          keyPoints: result.key_points || result.keyPoints || [],
+          actionItems: result.action_items || result.actionItems || [],
+          decisions: result.decisions || [],
           transcript: transcript.trim(),
-          source,
-          title: title.trim() || undefined,
-          date: date || undefined,
-          participants: participants
-            .split(",")
-            .map((p) => p.trim())
-            .filter(Boolean),
-        }),
-      });
-      if (!res.ok) throw new Error(`Processing failed: ${res.statusText}`);
-      const data: ProcessedMeeting = await res.json();
+        };
+      }
+
       setProcessed(data);
       if (data.title && !title.trim()) setTitle(data.title);
     } catch (err: unknown) {

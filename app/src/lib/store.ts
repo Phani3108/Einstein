@@ -1,7 +1,7 @@
 import { createContext, useContext } from "react";
 import type { Note } from "./api";
 
-export type SidebarView = "files" | "search" | "graph" | "backlinks" | "canvas" | "calendar" | "kanban" | "export" | "plugins" | "settings" | "bookmarks" | "insights" | "rag" | "meetings" | "actions" | "contexthub";
+export type SidebarView = "files" | "search" | "graph" | "backlinks" | "canvas" | "calendar" | "kanban" | "export" | "plugins" | "settings" | "bookmarks" | "insights" | "rag" | "meetings" | "actions" | "contexthub" | "integrations";
 
 /* ------------------------------------------------------------------ */
 /*  Context Mode — replaces tab-based routing with contextual routing   */
@@ -70,6 +70,37 @@ export interface NoteAssociationState {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Intelligence types                                                 */
+/* ------------------------------------------------------------------ */
+
+export interface BriefingData {
+  summary: string;
+  overdue_commitments: any[];
+  stale_people: any[];
+  stale_projects: any[];
+  today_event_count: number;
+  attention_items: any[];
+}
+
+export interface CommitmentData {
+  id: string;
+  content: string;
+  person_name?: string;
+  due_date?: string;
+  status: string;
+  created_at: string;
+}
+
+export interface ContextEventData {
+  id: string;
+  source: string;
+  event_type: string;
+  content: string;
+  timestamp: string;
+  people_mentioned: string[];
+}
+
+/* ------------------------------------------------------------------ */
 /*  Shared types for cross-feature state                               */
 /* ------------------------------------------------------------------ */
 
@@ -120,6 +151,12 @@ export interface AppState {
   actionItems: ActionItemState[];
   calendarEvents: CalendarEventState[];
   pipelineRunning: boolean;
+  // Intelligence state
+  morningBriefing: BriefingData | null;
+  dormantPeople: PersonState[];
+  dormantProjects: ProjectState[];
+  commitments: CommitmentData[];
+  contextEvents: ContextEventData[];
 }
 
 export const initialState: AppState = {
@@ -141,6 +178,11 @@ export const initialState: AppState = {
   actionItems: [],
   calendarEvents: [],
   pipelineRunning: false,
+  morningBriefing: null,
+  dormantPeople: [],
+  dormantProjects: [],
+  commitments: [],
+  contextEvents: [],
 };
 
 export type AppAction =
@@ -184,7 +226,13 @@ export type AppAction =
   | { type: "SET_CALENDAR_EVENTS"; events: CalendarEventState[] }
   | { type: "ADD_CALENDAR_EVENTS"; events: CalendarEventState[] }
   | { type: "REMOVE_CALENDAR_EVENTS_FOR_NOTE"; noteId: string }
-  | { type: "SET_PIPELINE_RUNNING"; running: boolean };
+  | { type: "SET_PIPELINE_RUNNING"; running: boolean }
+  // Intelligence
+  | { type: "SET_BRIEFING"; briefing: BriefingData }
+  | { type: "SET_DORMANT_PEOPLE"; people: PersonState[] }
+  | { type: "SET_DORMANT_PROJECTS"; projects: ProjectState[] }
+  | { type: "SET_COMMITMENTS"; commitments: CommitmentData[] }
+  | { type: "SET_CONTEXT_EVENTS"; events: ContextEventData[] };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -331,6 +379,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     case "SET_PIPELINE_RUNNING":
       return { ...state, pipelineRunning: action.running };
+    // --- Intelligence ---
+    case "SET_BRIEFING":
+      return { ...state, morningBriefing: action.briefing };
+    case "SET_DORMANT_PEOPLE":
+      return { ...state, dormantPeople: action.people };
+    case "SET_DORMANT_PROJECTS":
+      return { ...state, dormantProjects: action.projects };
+    case "SET_COMMITMENTS":
+      return { ...state, commitments: action.commitments };
+    case "SET_CONTEXT_EVENTS":
+      return { ...state, contextEvents: action.events };
     default:
       return state;
   }

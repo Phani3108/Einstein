@@ -638,8 +638,8 @@ export function BrainHome() {
       <style>{`
         .bh-container {
           padding: 24px 32px;
-          max-width: 1100px;
-          margin: 0 auto;
+          max-width: none;
+          margin: 0;
           overflow-y: auto;
           height: 100%;
         }

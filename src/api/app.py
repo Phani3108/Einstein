@@ -23,6 +23,10 @@ from src.api.routes.reflection import create_reflection_router
 from src.api.routes.distillation import create_distillation_router
 from src.api.routes.ai_tools import create_ai_tools_router
 from src.api.routes.vault import create_vault_router
+from src.api.routes.integrations import create_integrations_router
+from src.api.routes.actions import create_actions_router
+from src.api.routes.intelligence import create_intelligence_router
+from src.infrastructure.connectors.webhook_router import router as webhook_router
 from src.api.error_handlers import (
     domain_exception_handler,
     http_exception_handler,
@@ -181,6 +185,22 @@ def create_app() -> FastAPI:
                 "name": "vault",
                 "description": "Vault operations — notes, versions, bookmarks, tags, graph, config, decisions, templates",
             },
+            {
+                "name": "actions",
+                "description": "Outbound actions — preview, execute, and track actions like calendar blocks, email drafts, tickets",
+            },
+            {
+                "name": "integrations",
+                "description": "Integration management — connect/disconnect providers, OAuth callbacks, manual sync",
+            },
+            {
+                "name": "intelligence",
+                "description": "Intelligence layer — pre-meeting briefings, weekly reports, follow-up detection, relationship health",
+            },
+            {
+                "name": "webhooks",
+                "description": "Inbound webhook receiver for third-party provider events",
+            },
         ],
         openapi_url="/api/v1/openapi.json",
         docs_url=None,  # We'll create a custom docs endpoint
@@ -281,6 +301,30 @@ def create_app() -> FastAPI:
         auth_middleware=container.auth_middleware(),
     )
     app.include_router(vault_router)
+
+    # Integration connector routes (Phase 1A)
+    integrations_router = create_integrations_router(
+        context_repo=container.context_event_repository(),
+        auth_middleware=container.auth_middleware(),
+    )
+    app.include_router(integrations_router)
+
+    # Action routes (Phase 3)
+    actions_router = create_actions_router(
+        context_repo=container.context_event_repository(),
+        auth_middleware=container.auth_middleware(),
+    )
+    app.include_router(actions_router)
+
+    # Intelligence layer routes (Phase 5A)
+    intelligence_router = create_intelligence_router(
+        context_repo=container.context_event_repository(),
+        auth_middleware=container.auth_middleware(),
+    )
+    app.include_router(intelligence_router)
+
+    # Webhook ingestion routes (Phase 1A)
+    app.include_router(webhook_router)
 
     # Customize OpenAPI schema
     def custom_openapi():

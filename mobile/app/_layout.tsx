@@ -53,6 +53,14 @@ export default function RootLayout() {
             }}
           />
         ))}
+        {/* Non-tab screens — accessible via router.push but hidden from the tab bar */}
+        <Tabs.Screen
+          name="integrations"
+          options={{
+            title: "Integrations",
+            href: null, // hide from tab bar
+          }}
+        />
       </Tabs>
     </>
   );

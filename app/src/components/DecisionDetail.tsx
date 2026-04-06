@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useApp } from "../lib/store";
 import type { DecisionState } from "../lib/store";
 import { api } from "../lib/api";
@@ -82,6 +82,40 @@ export function DecisionDetail({ decisionId }: { decisionId: string }) {
       .catch(() => {});
   }, [decisionId]);
 
+  // Dirty detection: compare drafts vs saved decision
+  const dirty = useMemo(() => {
+    if (!decision || !editing) return false;
+    const savedAlts = (() => {
+      try {
+        const parsed = JSON.parse(decision.alternatives || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return decision.alternatives ? [decision.alternatives] : [];
+      }
+    })();
+    return (
+      title !== decision.title ||
+      description !== decision.description ||
+      reasoning !== decision.reasoning ||
+      revisitDate !== (decision.revisit_date ?? "") ||
+      JSON.stringify(alternatives) !== JSON.stringify(savedAlts)
+    );
+  }, [decision, editing, title, description, reasoning, revisitDate, alternatives]);
+
+  // Discard all changes
+  const discardChanges = useCallback(() => {
+    if (!decision) return;
+    setTitle(decision.title);
+    setDescription(decision.description);
+    setReasoning(decision.reasoning);
+    setRevisitDate(decision.revisit_date ?? "");
+    try {
+      setAlternatives(JSON.parse(decision.alternatives || "[]"));
+    } catch {
+      setAlternatives(decision.alternatives ? [decision.alternatives] : []);
+    }
+  }, [decision]);
+
   const resolveNoteTitle = useCallback(
     (noteId: string) => {
       const note = state.notes.find((n) => n.id === noteId);
@@ -120,6 +154,20 @@ export function DecisionDetail({ decisionId }: { decisionId: string }) {
       setSaving(false);
     }
   }, [decision, decisionId, title, description, reasoning, alternatives, revisitDate, dispatch]);
+
+  // Cmd+S / Ctrl+S keyboard shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        if (dirty) {
+          e.preventDefault();
+          handleSave();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [dirty, handleSave]);
 
   const handleStatusChange = useCallback(
     async (newStatus: DecisionState["status"]) => {
@@ -414,6 +462,58 @@ export function DecisionDetail({ decisionId }: { decisionId: string }) {
         .dd-edit-toggle:hover {
           color: var(--accent, #3b82f6);
         }
+
+        @keyframes dd-slide-up {
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+
+        .dd-save-bar {
+          position: sticky;
+          bottom: 0;
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          padding: 12px 24px;
+          margin-top: 20px;
+          background: var(--bg-secondary, #27272a);
+          border-top: 1px solid var(--border, #27272a);
+          border-radius: 8px 8px 0 0;
+          animation: dd-slide-up 0.2s ease-out;
+          z-index: 30;
+        }
+
+        .dd-save-bar-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 18px;
+          border-radius: 6px;
+          border: none;
+          background: var(--accent, #3b82f6);
+          color: #fff;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: opacity 0.15s;
+        }
+        .dd-save-bar-btn:hover { opacity: 0.9; }
+        .dd-save-bar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .dd-discard-bar-btn {
+          padding: 7px 18px;
+          border-radius: 6px;
+          border: 1px solid var(--border, #27272a);
+          background: var(--bg-primary, #1e1e2e);
+          color: var(--text-primary, #e4e4e7);
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .dd-discard-bar-btn:hover { background: rgba(255, 255, 255, 0.06); }
+        .dd-discard-bar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       `}</style>
 
       <div className="dd-container">
@@ -596,31 +696,33 @@ export function DecisionDetail({ decisionId }: { decisionId: string }) {
           </div>
         )}
 
-        {/* Save bar when editing */}
-        {editing && (
-          <div className="dd-actions">
+        {/* Save bar when editing and dirty */}
+        {editing && dirty && (
+          <div className="dd-save-bar">
             <button
-              className="dd-btn dd-btn-accent"
+              className="dd-save-bar-btn"
               onClick={handleSave}
               disabled={saving}
             >
               <Save size={14} />
-              {saving ? "Saving..." : "Save changes"}
+              {saving ? "Saving..." : "Save Changes"}
             </button>
             <button
+              className="dd-discard-bar-btn"
+              onClick={() => { discardChanges(); setEditing(false); }}
+              disabled={saving}
+            >
+              Discard
+            </button>
+          </div>
+        )}
+
+        {/* Cancel button when editing but not dirty */}
+        {editing && !dirty && (
+          <div className="dd-actions">
+            <button
               className="dd-btn"
-              onClick={() => {
-                setTitle(decision.title);
-                setDescription(decision.description);
-                setReasoning(decision.reasoning);
-                setRevisitDate(decision.revisit_date ?? "");
-                try {
-                  setAlternatives(JSON.parse(decision.alternatives || "[]"));
-                } catch {
-                  setAlternatives([]);
-                }
-                setEditing(false);
-              }}
+              onClick={() => { discardChanges(); setEditing(false); }}
             >
               <X size={14} />
               Cancel

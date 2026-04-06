@@ -43,8 +43,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const [goalDraft, setGoalDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
   const [deadlineDraft, setDeadlineDraft] = useState("");
+  const [statusDraft, setStatusDraft] = useState<ProjectState["status"]>("active");
   const [statusOpen, setStatusOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [draftsInitialized, setDraftsInitialized] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Load associations on mount
   useEffect(() => {
@@ -83,52 +86,95 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     return state.actionItems.filter((item) => noteIds.has(item.note_id));
   }, [associations, state.actionItems]);
 
-  const updateField = useCallback(
-    async (changes: Partial<ProjectState>) => {
-      try {
-        await api.updateProject(projectId, changes);
-        dispatch({ type: "UPDATE_PROJECT", id: projectId, changes });
-      } catch (e) {
-        console.error("Failed to update project:", e);
-      }
-    },
-    [projectId, dispatch]
-  );
+  // Initialize all drafts from project
+  const initDrafts = useCallback(() => {
+    if (!project) return;
+    setTitleDraft(project.title);
+    setGoalDraft(project.goal);
+    setDescDraft(project.description);
+    setDeadlineDraft(project.deadline ?? "");
+    setStatusDraft(project.status);
+    setDraftsInitialized(true);
+  }, [project]);
 
-  const saveTitle = useCallback(() => {
+  // Auto-init drafts when project loads or changes (and we haven't touched them yet)
+  useEffect(() => {
+    if (project && !draftsInitialized) {
+      initDrafts();
+    }
+  }, [project, draftsInitialized, initDrafts]);
+
+  // Dirty detection: compare drafts vs saved project
+  const dirty = useMemo(() => {
+    if (!project || !draftsInitialized) return false;
+    return (
+      titleDraft !== project.title ||
+      goalDraft !== project.goal ||
+      descDraft !== project.description ||
+      deadlineDraft !== (project.deadline ?? "") ||
+      statusDraft !== project.status
+    );
+  }, [project, draftsInitialized, titleDraft, goalDraft, descDraft, deadlineDraft, statusDraft]);
+
+  // Save all changes at once
+  const saveAllChanges = useCallback(async () => {
+    if (!project || !dirty) return;
+    setSaving(true);
+    try {
+      const changes: Partial<ProjectState> = {};
+      if (titleDraft.trim() !== project.title) changes.title = titleDraft.trim();
+      if (goalDraft !== project.goal) changes.goal = goalDraft;
+      if (descDraft !== project.description) changes.description = descDraft;
+      if (deadlineDraft !== (project.deadline ?? "")) changes.deadline = deadlineDraft || undefined;
+      if (statusDraft !== project.status) changes.status = statusDraft;
+
+      await api.updateProject(projectId, changes);
+      dispatch({ type: "UPDATE_PROJECT", id: projectId, changes });
+      setEditingTitle(false);
+      setEditingGoal(false);
+      setEditingDesc(false);
+      setEditingDeadline(false);
+    } catch (e) {
+      console.error("Failed to update project:", e);
+    } finally {
+      setSaving(false);
+    }
+  }, [project, dirty, titleDraft, goalDraft, descDraft, deadlineDraft, statusDraft, projectId, dispatch]);
+
+  // Discard all changes
+  const discardChanges = useCallback(() => {
+    if (!project) return;
+    setTitleDraft(project.title);
+    setGoalDraft(project.goal);
+    setDescDraft(project.description);
+    setDeadlineDraft(project.deadline ?? "");
+    setStatusDraft(project.status);
     setEditingTitle(false);
-    if (titleDraft.trim() && titleDraft !== project?.title) {
-      updateField({ title: titleDraft.trim() });
-    }
-  }, [titleDraft, project?.title, updateField]);
-
-  const saveGoal = useCallback(() => {
     setEditingGoal(false);
-    if (goalDraft !== project?.goal) {
-      updateField({ goal: goalDraft });
-    }
-  }, [goalDraft, project?.goal, updateField]);
-
-  const saveDesc = useCallback(() => {
     setEditingDesc(false);
-    if (descDraft !== project?.description) {
-      updateField({ description: descDraft });
-    }
-  }, [descDraft, project?.description, updateField]);
-
-  const saveDeadline = useCallback(() => {
     setEditingDeadline(false);
-    if (deadlineDraft !== (project?.deadline ?? "")) {
-      updateField({ deadline: deadlineDraft || undefined });
-    }
-  }, [deadlineDraft, project?.deadline, updateField]);
+  }, [project]);
+
+  // Cmd+S / Ctrl+S keyboard shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        if (dirty) {
+          e.preventDefault();
+          saveAllChanges();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [dirty, saveAllChanges]);
 
   const changeStatus = useCallback(
     (status: ProjectState["status"]) => {
       setStatusOpen(false);
-      updateField({ status });
+      setStatusDraft(status);
     },
-    [updateField]
+    []
   );
 
   const handleDelete = useCallback(async () => {
@@ -252,10 +298,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               className="pd-title-input"
               value={titleDraft}
               onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={saveTitle}
+              onBlur={() => setEditingTitle(false)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") saveTitle();
-                if (e.key === "Escape") setEditingTitle(false);
+                if (e.key === "Enter") setEditingTitle(false);
+                if (e.key === "Escape") { setTitleDraft(project.title); setEditingTitle(false); }
               }}
               autoFocus
             />
@@ -263,11 +309,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             <h1
               className="pd-title"
               onClick={() => {
-                setTitleDraft(project.title);
+                if (!draftsInitialized) initDrafts();
                 setEditingTitle(true);
               }}
             >
-              {project.title}
+              {draftsInitialized ? titleDraft : project.title}
             </h1>
           )}
         </div>
@@ -288,10 +334,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 className="pd-deadline-input"
                 value={deadlineDraft}
                 onChange={(e) => setDeadlineDraft(e.target.value)}
-                onBlur={saveDeadline}
+                onBlur={() => setEditingDeadline(false)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") saveDeadline();
-                  if (e.key === "Escape") setEditingDeadline(false);
+                  if (e.key === "Enter") setEditingDeadline(false);
+                  if (e.key === "Escape") { setDeadlineDraft(project.deadline ?? ""); setEditingDeadline(false); }
                 }}
                 autoFocus
               />
@@ -299,7 +345,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               <span
                 className="pd-deadline-text"
                 onClick={() => {
-                  setDeadlineDraft(project.deadline ?? "");
+                  if (!draftsInitialized) initDrafts();
                   setEditingDeadline(true);
                 }}
               >
@@ -320,9 +366,9 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             className="pd-textarea"
             value={goalDraft}
             onChange={(e) => setGoalDraft(e.target.value)}
-            onBlur={saveGoal}
+            onBlur={() => setEditingGoal(false)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") setEditingGoal(false);
+              if (e.key === "Escape") { setGoalDraft(project.goal); setEditingGoal(false); }
             }}
             rows={3}
             autoFocus
@@ -331,11 +377,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           <p
             className="pd-text-block"
             onClick={() => {
-              setGoalDraft(project.goal);
+              if (!draftsInitialized) initDrafts();
               setEditingGoal(true);
             }}
           >
-            {project.goal || "Click to add a goal..."}
+            {(draftsInitialized ? goalDraft : project.goal) || "Click to add a goal..."}
           </p>
         )}
       </section>
@@ -348,9 +394,9 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             className="pd-textarea"
             value={descDraft}
             onChange={(e) => setDescDraft(e.target.value)}
-            onBlur={saveDesc}
+            onBlur={() => setEditingDesc(false)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") setEditingDesc(false);
+              if (e.key === "Escape") { setDescDraft(project.description); setEditingDesc(false); }
             }}
             rows={4}
             autoFocus
@@ -359,11 +405,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           <p
             className="pd-text-block"
             onClick={() => {
-              setDescDraft(project.description);
+              if (!draftsInitialized) initDrafts();
               setEditingDesc(true);
             }}
           >
-            {project.description || "Click to add a description..."}
+            {(draftsInitialized ? descDraft : project.description) || "Click to add a description..."}
           </p>
         )}
       </section>
@@ -510,6 +556,26 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           </div>
         )}
       </div>
+
+      {/* Save bar */}
+      {dirty && (
+        <div className="pd-save-bar">
+          <button
+            className="pd-save-btn"
+            onClick={saveAllChanges}
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+          <button
+            className="pd-discard-btn"
+            onClick={discardChanges}
+            disabled={saving}
+          >
+            Discard
+          </button>
+        </div>
+      )}
 
       {/* Delete confirmation */}
       {showDeleteConfirm && (
@@ -1017,4 +1083,55 @@ const styles = `
 .pd-confirm-delete:hover {
   background: #dc2626;
 }
+
+/* Save bar */
+@keyframes pd-slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.pd-save-bar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 24px;
+  background: var(--bg-secondary, #27272a);
+  border-top: 1px solid var(--border, #27272a);
+  border-radius: 8px 8px 0 0;
+  animation: pd-slide-up 0.2s ease-out;
+  z-index: 30;
+}
+
+.pd-save-btn {
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: none;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.pd-save-btn:hover { opacity: 0.9; }
+.pd-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pd-discard-btn {
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #27272a);
+  background: var(--bg-primary, #1e1e2e);
+  color: var(--text-primary, #e4e4e7);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pd-discard-btn:hover { background: rgba(255, 255, 255, 0.06); }
+.pd-discard-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 `;

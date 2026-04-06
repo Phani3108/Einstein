@@ -1,10 +1,11 @@
 """Connection discovery worker: Find and create links between context events.
 
-Four discovery strategies:
+Five discovery strategies:
   1. Entity match — same person mentioned in two events
   2. Temporal cluster — events within 30 min from different sources
   3. Embedding similarity — cosine similarity above threshold
   4. LLM inference — batch clusters through LLM for deeper connections
+  5. Causal chains — meeting → follow-up email → task creation
 
 Runs every ~5 minutes.
 """
@@ -96,6 +97,10 @@ async def discover_connections(
         )
         new_connections.extend(llm_conns)
 
+    # Strategy 5: Causal chains (meeting → email → task)
+    causal_conns = _discover_causal_chains(recent_events, existing_pairs)
+    new_connections.extend(causal_conns)
+
     # Deduplicate within batch
     seen: Set[Tuple[UUID, UUID]] = set()
     unique_conns = []
@@ -115,15 +120,17 @@ async def discover_connections(
         except Exception as e:
             logger.warning("Failed to create connection: %s", e)
 
+    llm_count = len(new_connections) - len(entity_conns) - len(temporal_conns) - len(embedding_conns) - len(causal_conns)
     logger.info(
         "Connection discovery: %d new connections for user %s "
-        "(entity=%d, temporal=%d, embedding=%d, llm=%d)",
+        "(entity=%d, temporal=%d, embedding=%d, llm=%d, causal=%d)",
         created,
         user_id,
         len(entity_conns),
         len(temporal_conns),
         len(embedding_conns),
-        len(new_connections) - len(entity_conns) - len(temporal_conns) - len(embedding_conns),
+        llm_count,
+        len(causal_conns),
     )
     return created
 
@@ -340,6 +347,125 @@ async def _discover_llm_inference(
         )
 
     return connections
+
+
+def _discover_causal_chains(
+    events: List[ContextEvent],
+    existing: Set[Tuple[UUID, UUID]],
+) -> List[Connection]:
+    """Detect causal chains: meeting -> follow-up email -> task creation."""
+    connections = []
+
+    # Sort by timestamp
+    sorted_events = sorted(events, key=lambda e: e.timestamp)
+
+    # Build source index for quick lookup
+    by_source: dict[str, list[ContextEvent]] = defaultdict(list)
+    for e in sorted_events:
+        by_source[e.source].append(e)
+
+    # Rule 1: Calendar event ends -> email sent to same attendees within 2 hours
+    calendar_events = [e for e in sorted_events if e.source == "calendar" or e.event_type == "meeting_transcript"]
+    email_events = [e for e in sorted_events if e.source == "gmail" or e.source == "outlook"]
+
+    for cal_event in calendar_events:
+        cal_people = set(p.lower() for p in cal_event.extracted_people)
+        if not cal_people:
+            continue
+
+        for email_event in email_events:
+            # Email must be within 2 hours after the calendar event
+            delta = (email_event.timestamp - cal_event.timestamp).total_seconds()
+            if delta < 0 or delta > 7200:  # 0 to 2 hours
+                continue
+
+            email_people = set(p.lower() for p in email_event.extracted_people)
+            overlap = cal_people & email_people
+            if not overlap:
+                continue
+
+            pair = (cal_event.id, email_event.id)
+            if pair in existing or (pair[1], pair[0]) in existing:
+                continue
+
+            connections.append(Connection(
+                id=uuid_mod.uuid4(),
+                user_id=cal_event.user_id,
+                source_event_id=cal_event.id,
+                target_event_id=email_event.id,
+                connection_type="follow_up",
+                strength=0.85,
+                evidence=f"Email to {', '.join(overlap)} within {int(delta/60)}m of meeting",
+                method="causal_chain",
+            ))
+
+    # Rule 2: Email/message contains reference to a Jira/Linear issue
+    jira_events = [e for e in sorted_events if e.source in ("jira", "linear", "github")]
+    message_events = [e for e in sorted_events if e.source in ("gmail", "outlook", "slack", "whatsapp")]
+
+    for msg_event in message_events:
+        content = (msg_event.content or "").lower()
+        for task_event in jira_events:
+            sd = task_event.structured_data or {}
+            issue_key = sd.get("issue_key", "").lower()
+            issue_url = sd.get("url", "").lower()
+
+            if not issue_key and not issue_url:
+                continue
+
+            if (issue_key and issue_key in content) or (issue_url and issue_url in content):
+                pair = (msg_event.id, task_event.id)
+                if pair in existing or (pair[1], pair[0]) in existing:
+                    continue
+
+                connections.append(Connection(
+                    id=uuid_mod.uuid4(),
+                    user_id=msg_event.user_id,
+                    source_event_id=msg_event.id,
+                    target_event_id=task_event.id,
+                    connection_type="reference",
+                    strength=0.9,
+                    evidence=f"Message references {issue_key or 'issue'}",
+                    method="causal_chain",
+                ))
+
+    # Rule 3: Commitment from meeting -> Jira ticket created within 48 hours
+    for cal_event in calendar_events:
+        cal_actions = (cal_event.structured_data or {}).get("action_items", [])
+        if not cal_actions:
+            continue
+
+        for task_event in jira_events:
+            delta = (task_event.timestamp - cal_event.timestamp).total_seconds()
+            if delta < 0 or delta > 172800:  # 0 to 48 hours
+                continue
+
+            task_title = (task_event.structured_data or {}).get("title", "").lower()
+            task_content = (task_event.content or "").lower()
+
+            # Check if any action item text appears in the task
+            for action in cal_actions[:5]:
+                action_text = str(action).lower()
+                keywords = [w for w in action_text.split() if len(w) > 4]
+                matches = sum(1 for kw in keywords if kw in task_title or kw in task_content)
+                if matches >= 2:
+                    pair = (cal_event.id, task_event.id)
+                    if pair in existing or (pair[1], pair[0]) in existing:
+                        continue
+
+                    connections.append(Connection(
+                        id=uuid_mod.uuid4(),
+                        user_id=cal_event.user_id,
+                        source_event_id=cal_event.id,
+                        target_event_id=task_event.id,
+                        connection_type="fulfillment",
+                        strength=0.75,
+                        evidence=f"Task may fulfill action item from meeting",
+                        method="causal_chain",
+                    ))
+                    break
+
+    return connections[:30]
 
 
 async def connection_task(ctx: dict) -> int:

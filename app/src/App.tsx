@@ -28,6 +28,7 @@ import { InsightsDashboard } from "./components/InsightsDashboard";
 import { RAGPanel } from "./components/RAGPanel";
 import { MeetingsPanel } from "./components/MeetingsPanel";
 import { ActionItemsDashboard } from "./components/ActionItemsDashboard";
+import { IntegrationsPanel } from "./components/IntegrationsPanel";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { NoteNameModal } from "./components/NoteNameModal";
 import { FloatingVoiceButton } from "./components/VoiceInput";
@@ -71,6 +72,13 @@ function App() {
       api.listDecisions().then((decisions) =>
         dispatch({ type: "SET_DECISIONS", decisions: decisions.map((d) => ({ ...d, status: d.status as "active" | "revisit" | "reversed" | "superseded" })) })
       ).catch((err) => console.error("Failed to load decisions:", err));
+
+      // Load intelligence data
+      api.getMorningBriefing().then(b => dispatch({ type: "SET_BRIEFING", briefing: b })).catch(() => {});
+      api.getDormantPeople().then(p => dispatch({ type: "SET_DORMANT_PEOPLE", people: p })).catch(() => {});
+      api.getDormantProjects().then(p => dispatch({ type: "SET_DORMANT_PROJECTS", projects: p })).catch(() => {});
+      api.getCommitments().then(c => dispatch({ type: "SET_COMMITMENTS", commitments: c })).catch(() => {});
+      api.getContextEvents(undefined, undefined, undefined, 50).then(e => dispatch({ type: "SET_CONTEXT_EVENTS", events: e })).catch(() => {});
     }
     return () => {
       syncManager.destroy();
@@ -204,6 +212,8 @@ function App() {
         return <ErrorBoundary name="MainContent"><MeetingsPanel /></ErrorBoundary>;
       case "actions":
         return <ErrorBoundary name="MainContent"><ActionItemsDashboard /></ErrorBoundary>;
+      case "integrations":
+        return <ErrorBoundary name="MainContent"><IntegrationsPanel /></ErrorBoundary>;
       case "contexthub":
         return <ErrorBoundary name="MainContent"><BrainHome /></ErrorBoundary>;
       default:
@@ -211,12 +221,8 @@ function App() {
     }
   };
 
-  // Show context panel for contextMode views, legacy RightPanel for old views
-  const contextModeActive = ["project", "person", "decision"].includes(state.contextMode.type);
-  const showContextPanel = state.rightPanelOpen && (
-    state.sidebarView === "files" || contextModeActive
-  );
-  const showLegacyRightPanel = state.rightPanelOpen && !showContextPanel && ["backlinks", "search", "bookmarks"].includes(state.sidebarView);
+  // Show context panel when right panel is open — ContextPanel handles everything
+  const showContextPanel = state.rightPanelOpen;
   // Secondary tabs removed — navigation handled via Sidebar and ContextMode
 
   return (
@@ -229,7 +235,6 @@ function App() {
           {renderMainContent()}
         </div>
         {showContextPanel && <ErrorBoundary name="ContextPanel"><ContextPanel /></ErrorBoundary>}
-        {showLegacyRightPanel && <RightPanel />}
       </div>
       <ErrorBoundary name="CommandPalette"><CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} /></ErrorBoundary>
       <SearchModal />

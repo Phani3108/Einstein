@@ -486,15 +486,49 @@ export const api = {
     }
   },
 
-  // --- Meeting operations (no cloud equivalent — return defaults) ---
-  processMeeting: async (transcript: string, source: string, metadata?: Record<string, unknown>): Promise<Record<string, unknown>> => {
-    console.warn("processMeeting: sidecar is deprecated; no cloud equivalent yet");
-    return {};
-  },
+  // --- Meeting operations (Cloud API) ---
+  processMeeting: (content: string, title?: string): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/tools/extract`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ content, extract_type: "meeting", title }),
+    }),
 
-  parseWhatsApp: async (content: string): Promise<Record<string, unknown>> => {
-    console.warn("parseWhatsApp: sidecar is deprecated; no cloud equivalent yet");
-    return {};
+  parseWhatsApp: async (content: string): Promise<{ messages: any[] }> => {
+    // Parse WhatsApp export format: [DD/MM/YY, HH:MM] Sender: Message
+    const lines = content.split("\n");
+    const messages: any[] = [];
+    const msgRegex = /^\[?(\d{1,2}\/\d{1,2}\/\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*-?\s*([^:]+):\s*(.*)/;
+    let currentMsg: any = null;
+
+    for (const line of lines) {
+      const match = line.match(msgRegex);
+      if (match) {
+        if (currentMsg) messages.push(currentMsg);
+        currentMsg = {
+          timestamp: `${match[1]} ${match[2]}`,
+          sender: match[3].trim(),
+          content: match[4].trim(),
+        };
+      } else if (currentMsg) {
+        currentMsg.content += "\n" + line;
+      }
+    }
+    if (currentMsg) messages.push(currentMsg);
+
+    // Ingest each message as a context event
+    for (const msg of messages.slice(0, 100)) {
+      try {
+        await api.ingestContextEvent({
+          source: "whatsapp",
+          event_type: "message",
+          content: `${msg.sender}: ${msg.content}`,
+          raw_content: msg.content,
+          structured_data: { sender: msg.sender },
+        });
+      } catch (e) { console.warn("Failed to ingest WhatsApp msg:", e); }
+    }
+    return { messages };
   },
 
   // --- Action item extraction (Cloud API) ---
@@ -525,11 +559,12 @@ export const api = {
     }
   },
 
-  findConnections: async (notes: Record<string, unknown>[]): Promise<{ connections: Record<string, unknown>[] }> => {
-    // No direct cloud equivalent — return empty
-    console.warn("findConnections: sidecar is deprecated; no cloud equivalent yet");
-    return { connections: [] };
-  },
+  findConnections: (content: string, limit?: number): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/tools/connect`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ content, limit: limit || 10 }),
+    }),
 
   // --- Temporal Intelligence (Phase 2 — Cloud API) ---
 
@@ -559,19 +594,8 @@ export const api = {
   },
 
   /** Get proactive AI suggestions based on current context */
-  getSuggestions: async (
-    currentNoteId: string | null,
-    currentNoteTitle: string | null,
-    currentProjectId: string | null,
-    recentNotes: Record<string, unknown>[],
-    actions: Record<string, unknown>[],
-    people: Record<string, unknown>[],
-    projects: Record<string, unknown>[],
-  ): Promise<AISuggestion[]> => {
-    // No direct cloud equivalent — return empty
-    console.warn("getSuggestions: sidecar is deprecated; no cloud equivalent yet");
-    return [];
-  },
+  getSuggestions: (): Promise<any[]> =>
+    request<any[]>(`${CLOUD_API}/api/v1/insights/suggestions`),
 
   /** Extract associations between a note and known projects/people */
   extractAssociations: async (
@@ -598,4 +622,124 @@ export const api = {
       return [];
     }
   },
+
+  // ─── Reflection ───────────────────────────────────
+  getRelationships: (): Promise<any[]> =>
+    request<any[]>(`${CLOUD_API}/api/v1/reflection/relationships`),
+
+  getPersonDossier: (personId: string): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/reflection/people/${encodeURIComponent(personId)}/dossier`),
+
+  getWeeklyReview: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/reflection/review/weekly`),
+
+  getMonthlyReflection: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/reflection/review/monthly`),
+
+  mergePeople: (sourceId: string, targetId: string): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/reflection/people/merge`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ source_person_id: sourceId, target_person_id: targetId }),
+    }),
+
+  // ─── Insights ─────────────────────────────────────
+  getCommitments: (): Promise<any[]> =>
+    request<any[]>(`${CLOUD_API}/api/v1/insights/commitments`),
+
+  getDormantPeople: (minDays?: number): Promise<any[]> =>
+    request<any[]>(`${CLOUD_API}/api/v1/insights/dormant/people${minDays ? `?min_days=${minDays}` : ""}`),
+
+  getDormantProjects: (minDays?: number): Promise<any[]> =>
+    request<any[]>(`${CLOUD_API}/api/v1/insights/dormant/projects${minDays ? `?min_days=${minDays}` : ""}`),
+
+  getMorningBriefing: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/insights/briefing/morning`),
+
+  getWeeklyDigest: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/insights/digest/weekly`),
+
+  getPatterns: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/insights/patterns`),
+
+  refreshFreshness: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/insights/freshness/refresh`, { method: "POST", headers: authHeaders() }),
+
+  // ─── Distillation ─────────────────────────────────
+  distillContent: (eventId?: string, content?: string): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/distillation/distill`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ event_id: eventId, content }),
+    }),
+
+  getDistillationStatus: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/distillation/status`),
+
+  triggerAutoDistill: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/distillation/auto`, { method: "POST", headers: authHeaders() }),
+
+  // ─── Integrations ─────────────────────────────────
+  connectIntegration: (provider: string, redirectUri?: string): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/integrations/connect`, {
+      method: "POST",
+      body: JSON.stringify({ provider, redirect_uri: redirectUri || window.location.origin + '/integrations/callback' }),
+    }),
+  listIntegrations: (): Promise<any[]> =>
+    request<any[]>(`${CLOUD_API}/api/v1/integrations`),
+  disconnectIntegration: (provider: string): Promise<void> =>
+    request<void>(`${CLOUD_API}/api/v1/integrations/${encodeURIComponent(provider)}`, {
+      method: "DELETE",
+    }),
+  syncIntegration: (provider: string): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/integrations/${encodeURIComponent(provider)}/sync`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  // ─── Context Events ───────────────────────────────
+  getContextEvents: (source?: string, since?: string, until?: string, limit?: number): Promise<any[]> => {
+    const params = new URLSearchParams();
+    if (source) params.set("source", source);
+    if (since) params.set("since", since);
+    if (until) params.set("until", until);
+    if (limit) params.set("limit", String(limit));
+    const qs = params.toString();
+    return request<any[]>(`${CLOUD_API}/api/v1/context/events${qs ? `?${qs}` : ""}`);
+  },
+
+  getContextTimeline: (days?: number): Promise<any[]> =>
+    request<any[]>(`${CLOUD_API}/api/v1/context/timeline${days ? `?days=${days}` : ""}`),
+
+  ingestContextEvent: (event: Record<string, any>): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/context/ingest`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(event),
+    }),
+
+  // ─── Intelligence Layer (Phase 5B) ───────────────
+  getUpcomingBriefings: (): Promise<any[]> =>
+    request<any[]>(`${CLOUD_API}/api/v1/intelligence/briefing/upcoming`),
+
+  getMeetingBriefing: (meetingId: string): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/intelligence/briefing/${encodeURIComponent(meetingId)}`),
+
+  getWeeklyReport: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/intelligence/report/weekly`),
+
+  generateWeeklyReport: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/intelligence/report/weekly/generate`),
+
+  getFollowUps: (): Promise<any[]> =>
+    request<any[]>(`${CLOUD_API}/api/v1/intelligence/followups`),
+
+  getRelationshipDashboard: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/intelligence/relationships`),
+
+  getRelationshipScore: (personId: string): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/intelligence/relationships/${encodeURIComponent(personId)}/score`),
+
+  getIntelligenceSummary: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/intelligence/summary`),
 };

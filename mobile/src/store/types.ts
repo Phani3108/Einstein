@@ -24,7 +24,12 @@ export type EventSource =
   | "phone"
   | "manual_note"
   | "email"
-  | "sms";
+  | "sms"
+  | "whatsapp"
+  | "slack"
+  | "gmail"
+  | "browser"
+  | "shared";
 
 export interface Person {
   id: string;

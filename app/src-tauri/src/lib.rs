@@ -1,3 +1,4 @@
+mod capture;
 mod vault;
 
 use std::collections::HashMap;
@@ -403,6 +404,7 @@ fn get_stale_notes(days_threshold: i32, state: State<VaultState>) -> Result<Vec<
 pub fn run() {
     tauri::Builder::default()
         .manage(VaultState(Mutex::new(None)))
+        .manage(capture::CapturePrivacy::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -414,6 +416,11 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Start passive capture monitors (clipboard + window tracking).
+            // Capture is privacy-gated and disabled by default.
+            capture::setup_capture(app);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -469,6 +476,9 @@ pub fn run() {
             get_note_metadata,
             update_note_metadata,
             get_stale_notes,
+            // Passive capture
+            capture::set_capture_enabled,
+            capture::is_capture_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

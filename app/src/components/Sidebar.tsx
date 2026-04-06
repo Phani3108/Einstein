@@ -18,6 +18,10 @@ import {
   Scale,
   PenTool,
   Command,
+  BarChart3,
+  Video,
+  CheckSquare,
+  Sparkles,
 } from "lucide-react";
 import { useApp } from "../lib/store";
 import { useTranslation } from "../lib/i18n";
@@ -38,12 +42,11 @@ interface NavItem {
 function useNavItems(dispatch: React.Dispatch<import("../lib/store").AppAction>): NavItem[] {
   const { t } = useTranslation();
   return useMemo(() => [
-    // Brain home
+    // Core
     { icon: <Home size={16} />, title: "Home", view: "contexthub" as SidebarView, action: () => {
       dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "home" } });
       dispatch({ type: "SET_SIDEBAR_VIEW", view: "contexthub" });
     }},
-    // Core navigation
     { icon: <FileText size={16} />, title: t("sidebar.files"), view: "files" as SidebarView, action: () => {
       dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "home" } });
       dispatch({ type: "SET_SIDEBAR_VIEW", view: "files" });
@@ -52,7 +55,8 @@ function useNavItems(dispatch: React.Dispatch<import("../lib/store").AppAction>)
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
     }},
     { icon: <GitBranch size={16} />, title: t("sidebar.graph"), view: "graph" as SidebarView },
-    { icon: <Target size={16} />, title: "Projects", action: () => {
+    // Objects
+    { icon: <Target size={16} />, title: "Projects", divider: true, action: () => {
       dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "home" } });
       dispatch({ type: "SET_SIDEBAR_VIEW", view: "contexthub" });
     }},
@@ -60,10 +64,16 @@ function useNavItems(dispatch: React.Dispatch<import("../lib/store").AppAction>)
       dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "home" } });
       dispatch({ type: "SET_SIDEBAR_VIEW", view: "contexthub" });
     }},
-    { icon: <PenTool size={16} />, title: "Canvas", view: "canvas" as SidebarView },
+    // Intelligence
+    { icon: <BarChart3 size={16} />, title: "Insights", view: "insights" as SidebarView, divider: true },
+    { icon: <Video size={16} />, title: "Meetings", view: "meetings" as SidebarView },
+    { icon: <CheckSquare size={16} />, title: "Actions", view: "actions" as SidebarView },
+    { icon: <Sparkles size={16} />, title: "Ask AI", view: "rag" as SidebarView },
+    // Tools
+    { icon: <PenTool size={16} />, title: "Canvas", view: "canvas" as SidebarView, divider: true },
     { icon: <Calendar size={16} />, title: t("sidebar.calendar"), view: "calendar" as SidebarView },
-    { icon: <Star size={16} />, title: t("sidebar.bookmarks"), view: "bookmarks" as SidebarView, divider: true },
-    // System
+    { icon: <Star size={16} />, title: t("sidebar.bookmarks"), view: "bookmarks" as SidebarView },
+    { icon: <Plug size={16} />, title: "Integrations", view: "integrations" as SidebarView },
     { icon: <Settings size={16} />, title: t("sidebar.settings"), view: "settings" as SidebarView },
   ], [dispatch, t]);
 }
@@ -102,16 +112,21 @@ export function Sidebar() {
         <div className="sidebar-header" style={{ justifyContent: "center" }}>
           <div className="logo" />
         </div>
-        <div className="sidebar-nav" style={{ flexDirection: "column" }}>
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.view ?? item.title}
-              className={`icon-btn ${item.view && sidebarView === item.view ? "active" : ""}`}
-              onClick={() => item.view ? dispatch({ type: "SET_SIDEBAR_VIEW", view: item.view }) : item.action?.()}
-              title={item.title}
-            >
-              {item.icon}
-            </button>
+        <div className="sidebar-nav">
+          {NAV_ITEMS.map((item, i) => (
+            <React.Fragment key={i}>
+              {item.divider && <div className="sidebar-nav-divider" />}
+              <button
+                className={`sidebar-nav-item ${item.view && sidebarView === item.view ? "active" : ""}`}
+                onClick={() => {
+                  if (item.action) item.action();
+                  else if (item.view) dispatch({ type: "SET_SIDEBAR_VIEW", view: item.view });
+                }}
+                title={item.title}
+              >
+                {item.icon}
+              </button>
+            </React.Fragment>
           ))}
         </div>
       </div>
@@ -134,15 +149,19 @@ export function Sidebar() {
       </div>
 
       <div className="sidebar-nav">
-        {NAV_ITEMS.map((item) => (
-          <React.Fragment key={item.title}>
-            {item.divider && <div className="nav-divider" />}
+        {NAV_ITEMS.map((item, i) => (
+          <React.Fragment key={i}>
+            {item.divider && <div className="sidebar-nav-divider" />}
             <button
-              className={`icon-btn ${item.view && sidebarView === item.view ? "active" : ""}`}
-              onClick={() => item.view ? dispatch({ type: "SET_SIDEBAR_VIEW", view: item.view }) : item.action?.()}
+              className={`sidebar-nav-item ${item.view && sidebarView === item.view ? "active" : ""}`}
+              onClick={() => {
+                if (item.action) item.action();
+                else if (item.view) dispatch({ type: "SET_SIDEBAR_VIEW", view: item.view });
+              }}
               title={item.title}
             >
               {item.icon}
+              {!sidebarCollapsed && <span className="sidebar-nav-label">{item.title}</span>}
             </button>
           </React.Fragment>
         ))}

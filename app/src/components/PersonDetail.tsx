@@ -62,12 +62,8 @@ export function PersonDetail({ personId }: { personId: string }) {
     async function loadIntel() {
       setIntelLoading(true);
       try {
-        const CLOUD_API = "http://localhost:8000";
-        const res = await fetch(`${CLOUD_API}/api/v1/reflection/people/${personId}/dossier`, {
-          headers: { Authorization: "Bearer demo" },
-        });
-        if (res.ok && !cancelled) {
-          const data = await res.json();
+        const data = await api.getPersonDossier(personId);
+        if (!cancelled) {
           setIntelligence({
             relationship_strength: data.relationship_strength ?? 0,
             recent_events: data.recent_events ?? [],
@@ -156,9 +152,17 @@ export function PersonDetail({ personId }: { personId: string }) {
   }, [person]);
 
   const cancelEdit = useCallback(() => {
+    if (!person) { setEditing(false); setDraft({}); return; }
+    setDraft({
+      name: person.name,
+      role: person.role,
+      organization: person.organization,
+      email: person.email,
+      notes: person.notes,
+      last_contact: person.last_contact,
+    });
     setEditing(false);
-    setDraft({});
-  }, []);
+  }, [person]);
 
   const saveEdit = useCallback(async () => {
     if (!person) return;
@@ -180,6 +184,19 @@ export function PersonDetail({ personId }: { personId: string }) {
       console.error("Failed to update person:", err);
     }
   }, [person, draft, personId, dispatch]);
+
+  // Cmd+S / Ctrl+S keyboard shortcut when editing
+  useEffect(() => {
+    if (!editing) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        saveEdit();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [editing, saveEdit]);
 
   const handleDelete = useCallback(async () => {
     if (!confirmDelete) {
@@ -558,7 +575,7 @@ export function PersonDetail({ personId }: { personId: string }) {
         }
 
         .prd-talking-points li::before {
-          content: "\2022";
+          content: "\\2022";
           position: absolute;
           left: 0;
           color: var(--accent, #3b82f6);

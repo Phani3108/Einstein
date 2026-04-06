@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useApp } from "../lib/store";
 import { api } from "../lib/api";
+import { processNoteThroughPipeline } from "../lib/dataPipeline";
 import {
   Download,
   Upload,
@@ -9,6 +10,7 @@ import {
   Globe,
   CheckCircle,
   Loader,
+  FilePlus,
 } from "lucide-react";
 
 type ExportFormat = "markdown" | "json" | "html";
@@ -17,6 +19,8 @@ export function ExportImport() {
   const { state, dispatch } = useApp();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importingDoc, setImportingDoc] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
@@ -163,6 +167,99 @@ export function ExportImport() {
     }
   }, [dispatch]);
 
+  const handleImportDocument = useCallback(async (file: File) => {
+    setImportingDoc(true);
+    setResult(null);
+    try {
+      const name = file.name;
+      const ext = name.split(".").pop()?.toLowerCase() ?? "";
+
+      if (!["txt", "md", "json"].includes(ext)) {
+        setResult("Unsupported file type. Please upload .txt, .md, or .json files.");
+        setImportingDoc(false);
+        return;
+      }
+
+      const text = await file.text();
+
+      // If JSON, delegate to the existing JSON import flow
+      if (ext === "json") {
+        try {
+          const data = JSON.parse(text);
+          const notes = data.notes ?? data;
+          let imported = 0;
+          for (const n of notes) {
+            if (n.file_path && n.content) {
+              try {
+                const note = await api.saveNote(
+                  n.file_path,
+                  n.title || n.file_path.replace(".md", ""),
+                  n.content,
+                  n.frontmatter || {},
+                );
+                dispatch({ type: "UPDATE_NOTE", note });
+                imported++;
+              } catch {
+                // Skip failed notes
+              }
+            }
+          }
+          setResult(`Imported ${imported} notes from JSON`);
+        } catch {
+          setResult("Invalid JSON file format");
+        }
+        setImportingDoc(false);
+        return;
+      }
+
+      // For .txt / .md: create a single note from the file content
+      const titleFromName = name.replace(/\.[^.]+$/, "");
+      const slug = titleFromName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      const filePath = `imported/${slug}.md`;
+
+      const note = await api.saveNote(filePath, titleFromName, text, {
+        type: "document",
+        source: "file-upload",
+        original_filename: name,
+      });
+
+      dispatch({ type: "UPDATE_NOTE", note });
+
+      // Run through pipeline for entity extraction
+      processNoteThroughPipeline(note, dispatch, {
+        alreadySaved: true,
+        source: "document-upload",
+      }).catch((err) => console.error("Pipeline failed for imported document:", err));
+
+      setResult(`Imported "${titleFromName}" as a new note`);
+    } catch (err) {
+      setResult(`Document import failed: ${err}`);
+    } finally {
+      setImportingDoc(false);
+    }
+  }, [dispatch]);
+
+  const handleDocDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleImportDocument(file);
+  }, [handleImportDocument]);
+
+  const handleDocBrowse = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".txt,.md,.json";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (file) handleImportDocument(file);
+    };
+    input.click();
+  }, [handleImportDocument]);
+
   const handleImportExternal = useCallback(async () => {
     setResult(
       "To import from another tool: just point Einstein to the folder containing your .md files. " +
@@ -246,6 +343,39 @@ export function ExportImport() {
               <span className="export-btn-label">Markdown Vault</span>
               <span className="export-btn-desc">Open vault directly</span>
             </button>
+          </div>
+        </div>
+
+        {/* Import Document Section */}
+        <div className="export-section">
+          <h3>
+            <FilePlus size={16} /> Import Document
+          </h3>
+          <p className="section-desc">
+            Upload a text or Markdown file to create a new note
+          </p>
+
+          <div
+            className={`ei-dropzone${dragOver ? " ei-dragover" : ""}`}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDocDrop}
+            onClick={handleDocBrowse}
+          >
+            {importingDoc ? (
+              <>
+                <Loader size={24} className="loading-spinner" />
+                <span>Importing...</span>
+              </>
+            ) : (
+              <>
+                <Upload size={24} />
+                <span>Drop a file here or click to browse</span>
+                <span style={{ fontSize: 11, opacity: 0.6 }}>
+                  Supports .txt, .md, .json
+                </span>
+              </>
+            )}
           </div>
         </div>
 

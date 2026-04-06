@@ -27,7 +27,9 @@ import {
   Highlighter,
   FileText,
   Brain,
+  Sparkles,
   Loader,
+  X,
   Undo2,
   Redo2,
   Copy,
@@ -50,12 +52,10 @@ export function Editor() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSettingContent = useRef(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "extracting">("saved");
-  const [aiAvailable, setAiAvailable] = useState(false);
-
-  // Check sidecar availability on mount
-  useEffect(() => {
-    api.sidecarHealth().then((h) => setAiAvailable(h?.status === "ok"));
-  }, []);
+  const [aiAvailable] = useState(true);
+  const [distilling, setDistilling] = useState(false);
+  const [distilledContent, setDistilledContent] = useState<string | null>(null);
+  const [showDistillPanel, setShowDistillPanel] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -157,6 +157,31 @@ export function Editor() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     autoSave(editor.getHTML());
   }, [editor, autoSave]);
+
+  const handleDistill = useCallback(async () => {
+    if (!activeNote || distilling) return;
+    setDistilling(true);
+    setDistilledContent(null);
+    try {
+      const result = await api.distillContent(undefined, activeNote.content);
+      setDistilledContent(result?.summary || result?.distilled || JSON.stringify(result));
+      setShowDistillPanel(true);
+    } catch (err) {
+      console.error("Distillation failed:", err);
+      setDistilledContent("Distillation failed. Please try again.");
+      setShowDistillPanel(true);
+    } finally {
+      setDistilling(false);
+    }
+  }, [activeNote, distilling]);
+
+  const handleInsertDistilled = useCallback(() => {
+    if (!editor || !distilledContent) return;
+    const currentContent = editor.getHTML();
+    const summaryHtml = `<blockquote><p><strong>Distilled Summary</strong></p><p>${distilledContent.replace(/\n/g, "<br/>")}</p></blockquote><hr/>`;
+    editor.commands.setContent(summaryHtml + currentContent);
+    setShowDistillPanel(false);
+  }, [editor, distilledContent]);
 
   if (!activeNote) {
     return (
@@ -394,6 +419,64 @@ export function Editor() {
             }}
             title="Share / Copy note"
           />
+
+          <div className="divider" />
+
+          <ToolbarButton
+            icon={distilling ? <Loader size={14} className="loading-spinner" /> : <Sparkles size={14} />}
+            active={showDistillPanel}
+            onClick={handleDistill}
+            title="Distill note"
+          />
+        </div>
+      )}
+
+      {showDistillPanel && distilledContent && (
+        <div
+          style={{
+            margin: "0 8px",
+            padding: "12px 16px",
+            background: "var(--bg-secondary, #f5f5f7)",
+            border: "1px solid var(--border-color, #e0e0e0)",
+            borderRadius: 8,
+            fontSize: 13,
+            lineHeight: 1.5,
+            position: "relative",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontWeight: 600, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.7 }}>
+              <Sparkles size={12} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />
+              Distilled Summary
+            </span>
+            <button
+              className="icon-btn"
+              onClick={() => setShowDistillPanel(false)}
+              title="Close"
+              style={{ padding: 2 }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div style={{ whiteSpace: "pre-wrap", marginBottom: 10 }}>{distilledContent}</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              className="icon-btn"
+              onClick={() => navigator.clipboard.writeText(distilledContent)}
+              title="Copy summary"
+              style={{ fontSize: 11, padding: "2px 8px", display: "flex", alignItems: "center", gap: 4 }}
+            >
+              <Copy size={12} /> Copy
+            </button>
+            <button
+              className="icon-btn"
+              onClick={handleInsertDistilled}
+              title="Insert summary at top of note"
+              style={{ fontSize: 11, padding: "2px 8px", display: "flex", alignItems: "center", gap: 4 }}
+            >
+              <Clipboard size={12} /> Insert
+            </button>
+          </div>
         </div>
       )}
 
@@ -425,12 +508,10 @@ export function Editor() {
             {activeNote.content.split(/\s+/).filter(Boolean).length} words
           </span>
         </div>
-        {aiAvailable && (
-          <div className="status-item" title="AI sidecar connected">
-            <Brain size={10} />
-            <span>AI</span>
-          </div>
-        )}
+        <div className="status-item" title="AI connected">
+          <Brain size={10} />
+          <span>AI</span>
+        </div>
       </div>
     </div>
   );

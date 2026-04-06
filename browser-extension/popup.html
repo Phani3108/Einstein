@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=360" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>Einstein</title>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <h1 class="header__title">Einstein</h1>
+    <span id="status-dot" class="status-dot status-dot--unknown" title="Checking connection..."></span>
+  </header>
+
+  <!-- Quick Note -->
+  <section class="section">
+    <label for="note-input" class="label">Quick Note</label>
+    <textarea
+      id="note-input"
+      class="textarea"
+      rows="4"
+      placeholder="Type a note to capture..."
+    ></textarea>
+    <button id="send-btn" class="btn btn--primary" disabled>
+      Send to Einstein
+    </button>
+    <p id="send-status" class="status-message" hidden></p>
+  </section>
+
+  <!-- Stats -->
+  <section class="section section--stats">
+    <span class="stat-label">Captures</span>
+    <span id="capture-count" class="stat-value">--</span>
+  </section>
+
+  <!-- Settings -->
+  <details class="settings">
+    <summary class="settings__toggle">Settings</summary>
+    <div class="settings__body">
+      <label for="api-url" class="label">API URL</label>
+      <input
+        id="api-url"
+        class="input"
+        type="url"
+        placeholder="http://localhost:8000"
+      />
+
+      <label for="auth-token" class="label">Auth Token</label>
+      <input
+        id="auth-token"
+        class="input"
+        type="password"
+        placeholder="Bearer token"
+      />
+
+      <button id="save-btn" class="btn btn--secondary">Save</button>
+      <p id="save-status" class="status-message" hidden></p>
+    </div>
+  </details>
+
+  <script src="popup.js"></script>
+</body>
+</html>
