@@ -11,11 +11,13 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useApp } from "../lib/store";
 import { api } from "../lib/api";
+import type { PrepPack, Note } from "../lib/api";
 import { createNoteAndProcess } from "../lib/dataPipeline";
 import {
   Home, Target, Users, Scale, CheckSquare, Calendar, Clock,
   AlertTriangle, TrendingUp, FileText, Plus, ChevronRight,
   Brain, Sun, Moon, Coffee, Loader, Sparkles, Save, Send,
+  Eye, Zap, Archive,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -74,11 +76,44 @@ export function BrainHome() {
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [quickCapture, setQuickCapture] = useState("");
   const [captureStatus, setCaptureStatus] = useState<string | null>(null);
+  const [staleNotes, setStaleNotes] = useState<Note[]>([]);
+  const [prepPack, setPrepPack] = useState<PrepPack | null>(null);
+  const [prepLoading, setPrepLoading] = useState(false);
 
   const greeting = useMemo(() => getGreeting(), []);
   const today = useMemo(() => new Date().toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   }), []);
+
+  // --- Load stale notes from DB ---
+  useEffect(() => {
+    api.getStaleNotes(14).then(setStaleNotes).catch(() => setStaleNotes([]));
+  }, []);
+
+  // --- Prepare for Today ---
+  const generatePrepPack = useCallback(async () => {
+    setPrepLoading(true);
+    try {
+      const recentNotes = state.notes
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 15)
+        .map((n) => ({ id: n.id, title: n.title, content: n.content.slice(0, 500), updated_at: n.updated_at }));
+
+      const pendingActions = state.actionItems
+        .filter((a) => a.status === "pending")
+        .map((a) => ({ task: a.task, deadline: a.deadline, priority: a.priority, assignee: a.assignee }));
+
+      const activeDecisions = state.decisions
+        .filter((d) => d.status === "active")
+        .map((d) => ({ title: d.title, description: d.description, status: d.status, revisit_date: d.revisit_date }));
+
+      const result = await api.prepareContext("day", {}, recentNotes, pendingActions, activeDecisions);
+      setPrepPack(result);
+    } catch (err) {
+      console.error("Prep pack failed:", err);
+    }
+    setPrepLoading(false);
+  }, [state.notes, state.actionItems, state.decisions]);
 
   // --- Computed data from central state ---
 
@@ -139,14 +174,15 @@ export function BrainHome() {
     return state.projects
       .filter((p) => p.status === "active")
       .map((p) => {
-        const actionCount = state.actionItems.filter(
-          (a) => a.status === "pending"
-          // TODO: cross-ref via associations when loaded
+        // Count notes that mention this project title
+        const noteCount = state.notes.filter((n) =>
+          n.content.toLowerCase().includes(p.title.toLowerCase())
         ).length;
-        return { ...p, actionCount };
+        return { ...p, noteCount };
       })
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, 6);
-  }, [state.projects, state.actionItems]);
+  }, [state.projects, state.notes]);
 
   const waitingOn = useMemo(() => {
     return state.actionItems
@@ -189,8 +225,15 @@ export function BrainHome() {
         subtitle: `Deadline was ${p.deadline?.slice(0, 10)}`,
         id: p.id,
       }));
+    // Stale notes (not edited in 14+ days)
+    staleNotes.slice(0, 5).forEach((n) => items.push({
+      type: "stale",
+      title: n.title,
+      subtitle: `Last edited ${formatRelativeDate(n.updated_at)}`,
+      id: n.id,
+    }));
     return items;
-  }, [state.actionItems, state.decisions, state.projects]);
+  }, [state.actionItems, state.decisions, state.projects, staleNotes]);
 
   const recentActivity = useMemo(() => {
     return [...state.notes]
@@ -379,11 +422,14 @@ export function BrainHome() {
               >
                 <span className="bh-project-title">{p.title}</span>
                 {p.category && <span className="bh-project-category">{p.category}</span>}
-                {p.deadline && (
-                  <span className={`bh-project-deadline ${isOverdue(p.deadline) ? "bh-overdue" : ""}`}>
-                    {isOverdue(p.deadline) ? "Overdue" : `Due ${p.deadline.slice(0, 10)}`}
-                  </span>
-                )}
+                <div className="bh-project-meta">
+                  {p.noteCount > 0 && <span className="bh-project-stat"><FileText size={10} /> {p.noteCount} notes</span>}
+                  {p.deadline && (
+                    <span className={`bh-project-deadline ${isOverdue(p.deadline) ? "bh-overdue" : ""}`}>
+                      {isOverdue(p.deadline) ? "Overdue" : `Due ${p.deadline.slice(0, 10)}`}
+                    </span>
+                  )}
+                </div>
               </button>
             ))}
           </div>
@@ -454,6 +500,66 @@ export function BrainHome() {
                 <span className="bh-activity-date">{item.date}</span>
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Prep Pack — Prepare for Today */}
+        <div className="bh-card bh-card-wide">
+          <div className="bh-card-header">
+            <Zap size={16} />
+            <span>Prepare for Today</span>
+            <button
+              className="bh-card-action"
+              onClick={generatePrepPack}
+              disabled={prepLoading}
+            >
+              {prepLoading ? <Loader size={14} className="bh-spin" /> : <Sparkles size={14} />}
+              Generate
+            </button>
+          </div>
+          <div className="bh-card-body">
+            {!prepPack && !prepLoading && (
+              <p className="bh-empty">Click "Generate" for an AI-powered daily prep brief</p>
+            )}
+            {prepPack && prepPack.summary && (
+              <div className="bh-prep">
+                <p className="bh-prep-summary">{prepPack.summary}</p>
+                {prepPack.key_points.length > 0 && (
+                  <div className="bh-prep-section">
+                    <h4>Key Points</h4>
+                    <ul>{prepPack.key_points.map((p, i) => <li key={i}>{p}</li>)}</ul>
+                  </div>
+                )}
+                {prepPack.open_questions.length > 0 && (
+                  <div className="bh-prep-section">
+                    <h4>Open Questions</h4>
+                    <ul>{prepPack.open_questions.map((q, i) => <li key={i}>{q}</li>)}</ul>
+                  </div>
+                )}
+                {prepPack.suggested_actions.length > 0 && (
+                  <div className="bh-prep-section">
+                    <h4>Suggested Actions</h4>
+                    <ul>{prepPack.suggested_actions.map((a, i) => <li key={i}>{a}</li>)}</ul>
+                  </div>
+                )}
+                {prepPack.relevant_history.length > 0 && (
+                  <div className="bh-prep-section">
+                    <h4>Relevant History</h4>
+                    <ul>{prepPack.relevant_history.map((h, i) => <li key={i}>{h}</li>)}</ul>
+                  </div>
+                )}
+                <button
+                  className="bh-card-action"
+                  style={{ marginTop: 12 }}
+                  onClick={async () => {
+                    const content = `# Daily Prep — ${new Date().toISOString().slice(0, 10)}\n\n${prepPack.summary}\n\n## Key Points\n${prepPack.key_points.map((p) => `- ${p}`).join("\n")}\n\n## Open Questions\n${prepPack.open_questions.map((q) => `- ${q}`).join("\n")}\n\n## Suggested Actions\n${prepPack.suggested_actions.map((a) => `- ${a}`).join("\n")}`;
+                    await createNoteAndProcess(`Daily Prep — ${new Date().toISOString().slice(0, 10)}`, content, dispatch, { source: "prep-pack" });
+                  }}
+                >
+                  <Save size={14} /> Save as Note
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -844,6 +950,38 @@ export function BrainHome() {
           background: rgba(59, 130, 246, 0.1);
           color: var(--accent, #3b82f6);
           font-size: 12px;
+        }
+
+        .bh-project-meta {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .bh-project-stat {
+          display: flex;
+          align-items: center;
+          gap: 3px;
+          font-size: 11px;
+          color: var(--text-muted, #71717a);
+        }
+
+        .bh-prep p { margin: 0 0 8px; color: var(--text-primary, #e4e4e7); font-size: 14px; line-height: 1.6; }
+        .bh-prep-section { margin: 12px 0; }
+        .bh-prep-section h4 {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-muted, #71717a);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin: 0 0 6px;
+        }
+        .bh-prep-section ul {
+          margin: 0;
+          padding-left: 18px;
+          font-size: 13px;
+          color: var(--text-primary, #e4e4e7);
+          line-height: 1.6;
         }
 
         @keyframes bh-spin {

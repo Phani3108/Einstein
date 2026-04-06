@@ -11,9 +11,11 @@
  *   3. Action item + calendar event extraction (sidecar /extract-actions)
  *   4. Persist action items to DB (api.saveActionItems)
  *   5. Persist calendar events to DB (api.saveCalendarEvents)
- *   6. RAG re-index this note (api.ragIndex)
- *   7. Update central state via dispatch
- *   8. Emit plugin hooks
+ *   6. Auto-detect associations (match entities → projects/people)
+ *   7. Update note metadata (freshness, importance)
+ *   8. RAG re-index this note (api.ragIndex)
+ *   9. Update central state via dispatch
+ *  10. Emit plugin hooks
  */
 
 import { api } from "./api";
@@ -41,6 +43,7 @@ export interface PipelineResult {
   entitiesExtracted: number;
   actionItemsExtracted: number;
   calendarEventsExtracted: number;
+  associationsDetected: number;
   errors: string[];
 }
 
@@ -55,6 +58,8 @@ export type PipelineStage =
   | "extracting-entities"
   | "extracting-actions"
   | "persisting"
+  | "detecting-associations"
+  | "updating-metadata"
   | "indexing"
   | "done";
 
@@ -75,6 +80,7 @@ export async function processNoteThroughPipeline(
     entitiesExtracted: 0,
     actionItemsExtracted: 0,
     calendarEventsExtracted: 0,
+    associationsDetected: 0,
     errors: [],
   };
 
@@ -260,7 +266,71 @@ export async function processNoteThroughPipeline(
     }
 
     // ------------------------------------------------------------------
-    // Stage 7: RAG re-index
+    // Stage 6: Auto-detect associations
+    // ------------------------------------------------------------------
+    if (shouldRunAI) {
+      onStatus?.("detecting-associations");
+      try {
+        // Get known projects and people to match against
+        const [projects, people] = await Promise.all([
+          api.listProjects().catch(() => []),
+          api.listPeople().catch(() => []),
+        ]);
+
+        if (projects.length > 0 || people.length > 0) {
+          const detectedAssocs = await api.extractAssociations(
+            content,
+            currentNote.id,
+            projects.map((p) => ({ id: p.id, title: p.title })),
+            people.map((p) => ({ id: p.id, name: p.name })),
+          );
+
+          // Get existing associations to avoid duplicates
+          const existingAssocs = await api.getAssociationsForNote(currentNote.id).catch(() => []);
+          const existingKeys = new Set(
+            existingAssocs.map((a) => `${a.object_type}:${a.object_id}`),
+          );
+
+          for (const assoc of detectedAssocs) {
+            const key = `${assoc.object_type}:${assoc.object_id}`;
+            if (!existingKeys.has(key) && assoc.confidence >= 0.6) {
+              try {
+                await api.createAssociation(
+                  currentNote.id,
+                  assoc.object_type,
+                  assoc.object_id,
+                  assoc.relationship,
+                  assoc.confidence,
+                );
+                result.associationsDetected++;
+              } catch {
+                // Unique constraint violation — skip
+              }
+            }
+          }
+        }
+      } catch (err) {
+        result.errors.push(`Association detection failed: ${err}`);
+        // Non-fatal — continue pipeline
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Stage 7: Update note metadata
+    // ------------------------------------------------------------------
+    onStatus?.("updating-metadata");
+    try {
+      await api.updateNoteMetadata(currentNote.id, {
+        lastMeaningfulEdit: new Date().toISOString(),
+        sourceType: options.source || "manual",
+      });
+    } catch (err) {
+      result.errors.push(`Metadata update failed: ${err}`);
+      // Non-fatal
+    }
+
+    // ------------------------------------------------------------------
+    // Stage 8: RAG re-index
     // ------------------------------------------------------------------
     if (!options.skipRAG) {
       onStatus?.("indexing");
@@ -365,6 +435,20 @@ export async function loadCentralState(
     dispatch({ type: "SET_CALENDAR_EVENTS", events: calEvents });
   } catch (err) {
     console.error("Failed to load calendar events:", err);
+  }
+
+  // Initialize note_metadata for all notes (ensures rows exist for freshness tracking)
+  try {
+    await Promise.all(
+      notes.map((n) =>
+        api.updateNoteMetadata(n.id, {
+          lastMeaningfulEdit: n.updated_at,
+          sourceType: "manual",
+        }).catch(() => {}) // Ignore if row already exists
+      ),
+    );
+  } catch {
+    // Non-fatal — metadata tracking is best-effort
   }
 
   // Background RAG index (non-blocking)

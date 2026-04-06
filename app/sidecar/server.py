@@ -672,6 +672,318 @@ async def find_connections(req: ConnectionsRequest):
 
 
 # ---------------------------------------------------------------------------
+# Association Detection — match note content to known projects/people
+# ---------------------------------------------------------------------------
+
+ASSOCIATION_SYSTEM_PROMPT = """You are Einstein, a second brain assistant. Given a note's content and a list of known projects and people, identify which ones are mentioned or strongly related.
+
+Return ONLY valid JSON:
+{
+  "associations": [
+    {
+      "object_type": "project|person",
+      "object_id": "the id from the known list",
+      "relationship": "mentions|about|assigned_to|created_by",
+      "confidence": 0.85
+    }
+  ]
+}
+
+Rules:
+- Only return associations with confidence >= 0.6
+- "mentions" = the note references the entity
+- "about" = the note is primarily about this entity
+- Be conservative — don't hallucinate associations"""
+
+ASSOCIATION_PROMPT = """Analyze this note and find associations with known projects and people.
+
+NOTE CONTENT:
+{content}
+
+KNOWN PROJECTS:
+{projects_list}
+
+KNOWN PEOPLE:
+{people_list}"""
+
+
+class AssociationRequest(BaseModel):
+    content: str
+    note_id: str
+    known_projects: list[dict] = Field(default_factory=list)
+    known_people: list[dict] = Field(default_factory=list)
+
+
+class DetectedAssociation(BaseModel):
+    object_type: str
+    object_id: str
+    relationship: str = "mentions"
+    confidence: float = 0.7
+
+
+class AssociationResponse(BaseModel):
+    associations: list[DetectedAssociation] = []
+
+
+@app.post("/extract-associations", response_model=AssociationResponse)
+async def extract_associations(req: AssociationRequest):
+    """Detect associations between a note and known projects/people."""
+    if not req.known_projects and not req.known_people:
+        return AssociationResponse(associations=[])
+
+    try:
+        projects_list = "\n".join(
+            f"- id:{p.get('id', '')} title:\"{p.get('title', '')}\""
+            for p in req.known_projects
+        ) or "None"
+        people_list = "\n".join(
+            f"- id:{p.get('id', '')} name:\"{p.get('name', '')}\""
+            for p in req.known_people
+        ) or "None"
+
+        prompt = ASSOCIATION_PROMPT.format(
+            content=req.content[:3000],
+            projects_list=projects_list,
+            people_list=people_list,
+        )
+        raw = await call_llm(ASSOCIATION_SYSTEM_PROMPT, prompt)
+        data = json.loads(raw)
+
+        # Validate: only return associations that reference real IDs
+        valid_project_ids = {p.get("id") for p in req.known_projects}
+        valid_people_ids = {p.get("id") for p in req.known_people}
+
+        associations = []
+        for a in data.get("associations", []):
+            obj_id = a.get("object_id", "")
+            obj_type = a.get("object_type", "")
+            if obj_type == "project" and obj_id in valid_project_ids:
+                associations.append(DetectedAssociation(**a))
+            elif obj_type == "person" and obj_id in valid_people_ids:
+                associations.append(DetectedAssociation(**a))
+
+        return AssociationResponse(associations=associations)
+    except Exception as e:
+        LOG.error(f"Association detection failed: {e}")
+        return AssociationResponse(associations=[])
+
+
+# ---------------------------------------------------------------------------
+# Temporal Intelligence — Prep Packs & Suggestions
+# ---------------------------------------------------------------------------
+
+PREP_SYSTEM_PROMPT = """You are Einstein, a personal second brain assistant. Generate a focused preparation brief.
+Be concise and actionable. Highlight what the user should know, review, or prepare.
+
+Return ONLY valid JSON:
+{
+  "summary": "1-2 paragraph preparation summary",
+  "key_points": ["Key point 1", "Key point 2"],
+  "open_questions": ["Question that still needs answering"],
+  "relevant_history": ["Past note/decision/action that's relevant"],
+  "suggested_actions": ["Action to take before this event/day"]
+}"""
+
+PREP_PROMPT = """Generate a {focus_type} preparation brief.
+
+CONTEXT:
+{context_json}
+
+RELEVANT NOTES ({note_count}):
+{notes_summary}
+
+PENDING ACTIONS ({action_count}):
+{actions_summary}
+
+RECENT DECISIONS:
+{decisions_summary}
+
+Today's date: {today}"""
+
+
+class PrepRequest(BaseModel):
+    focus_type: str = Field(..., description="meeting, day, or project")
+    context: dict = Field(default_factory=dict, description="Meeting details, project info, etc.")
+    notes: list[dict] = Field(default_factory=list)
+    actions: list[dict] = Field(default_factory=list)
+    decisions: list[dict] = Field(default_factory=list)
+
+
+class PrepResponse(BaseModel):
+    summary: str = ""
+    key_points: list[str] = []
+    open_questions: list[str] = []
+    relevant_history: list[str] = []
+    suggested_actions: list[str] = []
+
+
+@app.post("/context/prepare", response_model=PrepResponse)
+async def prepare(req: PrepRequest):
+    """Generate a preparation brief for a meeting, day, or project."""
+    try:
+        from datetime import date
+
+        context_json = json.dumps(req.context, default=str)[:2000]
+        notes_summary = "\n".join(
+            f"- [{n.get('title', 'Untitled')}]: {n.get('content', '')[:200]}"
+            for n in req.notes[:15]
+        ) or "None"
+        actions_summary = "\n".join(
+            f"- {a.get('task', '')} (deadline: {a.get('deadline', 'none')}, priority: {a.get('priority', 'medium')})"
+            for a in req.actions[:15]
+        ) or "None"
+        decisions_summary = "\n".join(
+            f"- {d.get('title', '')} ({d.get('status', 'active')}): {d.get('description', '')[:100]}"
+            for d in req.decisions[:10]
+        ) or "None"
+
+        prompt = PREP_PROMPT.format(
+            focus_type=req.focus_type,
+            context_json=context_json,
+            note_count=len(req.notes),
+            notes_summary=notes_summary,
+            action_count=len(req.actions),
+            actions_summary=actions_summary,
+            decisions_summary=decisions_summary,
+            today=date.today().isoformat(),
+        )
+        raw = await call_llm(PREP_SYSTEM_PROMPT, prompt)
+        data = json.loads(raw)
+
+        return PrepResponse(
+            summary=data.get("summary", ""),
+            key_points=data.get("key_points", []),
+            open_questions=data.get("open_questions", []),
+            relevant_history=data.get("relevant_history", []),
+            suggested_actions=data.get("suggested_actions", []),
+        )
+    except Exception as e:
+        LOG.error(f"Prep generation failed: {e}")
+        return PrepResponse(summary=f"Could not generate prep: {str(e)}")
+
+
+SUGGESTIONS_SYSTEM_PROMPT = """You are Einstein, a proactive second brain assistant. Based on current context, suggest actionable items the user should consider.
+
+Types of suggestions:
+- related_note: A past note relevant to current context
+- overdue_action: An overdue task
+- stale_project: A project that hasn't been updated
+- person_followup: A person the user hasn't engaged with recently
+- pattern: A recurring theme across notes
+- decision_needed: A question raised multiple times without resolution
+
+Return ONLY valid JSON:
+{
+  "suggestions": [
+    {
+      "type": "related_note|overdue_action|stale_project|person_followup|pattern|decision_needed",
+      "title": "Short suggestion title",
+      "description": "Why this is relevant",
+      "confidence": 0.85
+    }
+  ]
+}"""
+
+SUGGESTIONS_PROMPT = """Given the user's current context, generate proactive suggestions.
+
+CURRENT CONTEXT:
+- Viewing: {current_view}
+- Active note: {current_note}
+
+RECENT NOTES ({note_count}):
+{notes_summary}
+
+PENDING ACTIONS ({action_count}):
+{actions_summary}
+
+PEOPLE ({people_count}):
+{people_summary}
+
+PROJECTS ({project_count}):
+{projects_summary}
+
+Today: {today}"""
+
+
+class SuggestionsRequest(BaseModel):
+    current_note_id: Optional[str] = None
+    current_note_title: Optional[str] = None
+    current_project_id: Optional[str] = None
+    recent_notes: list[dict] = Field(default_factory=list)
+    actions: list[dict] = Field(default_factory=list)
+    people: list[dict] = Field(default_factory=list)
+    projects: list[dict] = Field(default_factory=list)
+
+
+class Suggestion(BaseModel):
+    type: str = ""
+    title: str = ""
+    description: str = ""
+    confidence: float = 0.5
+
+
+class SuggestionsResponse(BaseModel):
+    suggestions: list[Suggestion] = []
+
+
+@app.post("/context/suggestions", response_model=SuggestionsResponse)
+async def get_suggestions(req: SuggestionsRequest):
+    """Generate proactive suggestions based on current context."""
+    try:
+        from datetime import date
+
+        current_view = "project" if req.current_project_id else ("note" if req.current_note_id else "home")
+        current_note = req.current_note_title or "None"
+
+        notes_summary = "\n".join(
+            f"- [{n.get('title', '')}] (updated: {n.get('updated_at', 'unknown')}): {n.get('content', '')[:150]}"
+            for n in req.recent_notes[:10]
+        ) or "None"
+        actions_summary = "\n".join(
+            f"- {a.get('task', '')} (deadline: {a.get('deadline', 'none')}, status: {a.get('status', 'pending')})"
+            for a in req.actions[:10]
+        ) or "None"
+        people_summary = "\n".join(
+            f"- {p.get('name', '')} ({p.get('role', '')}), last contact: {p.get('last_contact', 'unknown')}"
+            for p in req.people[:10]
+        ) or "None"
+        projects_summary = "\n".join(
+            f"- {p.get('title', '')} ({p.get('status', 'active')}), updated: {p.get('updated_at', 'unknown')}"
+            for p in req.projects[:10]
+        ) or "None"
+
+        prompt = SUGGESTIONS_PROMPT.format(
+            current_view=current_view,
+            current_note=current_note,
+            note_count=len(req.recent_notes),
+            notes_summary=notes_summary,
+            action_count=len(req.actions),
+            actions_summary=actions_summary,
+            people_count=len(req.people),
+            people_summary=people_summary,
+            project_count=len(req.projects),
+            projects_summary=projects_summary,
+            today=date.today().isoformat(),
+        )
+        raw = await call_llm(SUGGESTIONS_SYSTEM_PROMPT, prompt)
+        data = json.loads(raw)
+
+        suggestions = [
+            Suggestion(
+                type=s.get("type", "pattern"),
+                title=s.get("title", ""),
+                description=s.get("description", ""),
+                confidence=s.get("confidence", 0.5),
+            )
+            for s in data.get("suggestions", [])
+        ]
+        return SuggestionsResponse(suggestions=suggestions)
+    except Exception as e:
+        LOG.error(f"Suggestions generation failed: {e}")
+        return SuggestionsResponse(suggestions=[])
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

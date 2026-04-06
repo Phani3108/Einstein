@@ -17,6 +17,8 @@ from src.api.routes.thoughts import create_thoughts_router
 from src.api.routes.search import create_search_router
 from src.api.routes.timeline import create_timeline_router
 from src.api.routes.admin import router as admin_router
+from src.api.routes.context import create_context_router
+from src.api.routes.insights import create_insights_router
 from src.api.error_handlers import (
     domain_exception_handler,
     http_exception_handler,
@@ -151,6 +153,14 @@ def create_app() -> FastAPI:
                 "name": "admin",
                 "description": "Administrative operations for user and system management",
             },
+            {
+                "name": "context",
+                "description": "Context aggregation — ingest events from mobile, query timeline, manage people & projects",
+            },
+            {
+                "name": "insights",
+                "description": "AI-powered insights — briefings, prep packs, suggestions, patterns",
+            },
         ],
         openapi_url="/api/v1/openapi.json",
         docs_url=None,  # We'll create a custom docs endpoint
@@ -205,6 +215,20 @@ def create_app() -> FastAPI:
 
     # Include admin router
     app.include_router(admin_router)
+
+    # Context aggregation engine routes (Phase 0)
+    context_router = create_context_router(
+        context_repo=container.context_event_repository(),
+        auth_middleware=container.auth_middleware(),
+    )
+    app.include_router(context_router)
+
+    insights_router = create_insights_router(
+        context_repo=container.context_event_repository(),
+        llm_service=container.llm_service(),
+        auth_middleware=container.auth_middleware(),
+    )
+    app.include_router(insights_router)
 
     # Customize OpenAPI schema
     def custom_openapi():

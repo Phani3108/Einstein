@@ -12,11 +12,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useApp } from "../lib/store";
-import { api, type NoteAssociation } from "../lib/api";
+import { api, type NoteAssociation, type AISuggestion } from "../lib/api";
 import {
   FileText, Target, Users, Scale, CheckSquare, Link2,
   ChevronDown, ChevronRight, Plus, Eye, Calendar,
-  Sparkles, X,
+  Sparkles, X, Lightbulb, Loader,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -57,10 +57,41 @@ function Section({
 function EditorContext({ noteId }: { noteId: string }) {
   const { state, dispatch } = useApp();
   const [associations, setAssociations] = useState<NoteAssociation[]>([]);
+  const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
   useEffect(() => {
     api.getAssociationsForNote(noteId).then(setAssociations).catch(() => {});
   }, [noteId]);
+
+  // Load AI suggestions (debounced — only on note change)
+  useEffect(() => {
+    const timeout = setTimeout(async () => {
+      setSuggestionsLoading(true);
+      try {
+        const note = state.notes.find((n) => n.id === noteId);
+        const recentNotes = state.notes
+          .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+          .slice(0, 10)
+          .map((n) => ({ id: n.id, title: n.title, content: n.content.slice(0, 200), updated_at: n.updated_at }));
+        const result = await api.getSuggestions(
+          noteId,
+          note?.title ?? null,
+          null,
+          recentNotes,
+          state.actionItems.filter((a) => a.status === "pending").map((a) => ({ task: a.task, deadline: a.deadline, status: a.status })),
+          state.people.map((p) => ({ name: p.name, role: p.role, last_contact: p.last_contact })),
+          state.projects.map((p) => ({ title: p.title, status: p.status, updated_at: p.updated_at })),
+        );
+        setSuggestions(result);
+      } catch {
+        setSuggestions([]);
+      }
+      setSuggestionsLoading(false);
+    }, 2000); // 2 second delay to avoid spamming
+
+    return () => clearTimeout(timeout);
+  }, [noteId]); // Only re-run when note changes, not on every state update
 
   const note = state.notes.find((n) => n.id === noteId);
   const backlinks = useMemo(
@@ -183,6 +214,25 @@ function EditorContext({ noteId }: { noteId: string }) {
             <span className={`cp-action-status cp-action-${a.status}`} />
             <span className="cp-action-text">{a.task}</span>
             {a.deadline && <span className="cp-link-meta">{a.deadline.slice(0, 10)}</span>}
+          </div>
+        ))}
+      </Section>
+
+      <Section title="AI Suggestions" icon={<Lightbulb size={14} />} count={suggestions.length} defaultOpen={suggestions.length > 0}>
+        {suggestionsLoading && (
+          <div className="cp-suggestions-loading">
+            <Loader size={12} className="cp-spin" />
+            <span>Analyzing context...</span>
+          </div>
+        )}
+        {!suggestionsLoading && suggestions.length === 0 && (
+          <p className="cp-empty">No suggestions right now</p>
+        )}
+        {suggestions.map((s, i) => (
+          <div key={i} className="cp-suggestion">
+            <span className={`cp-suggestion-type cp-stype-${s.type}`}>{s.type.replace(/_/g, " ")}</span>
+            <span className="cp-suggestion-title">{s.title}</span>
+            <span className="cp-suggestion-desc">{s.description}</span>
           </div>
         ))}
       </Section>
@@ -441,6 +491,54 @@ export function ContextPanel() {
         .cp-quick-action:hover {
           background: var(--bg-secondary, #27272a);
           color: var(--text-primary, #e4e4e7);
+        }
+
+        .cp-suggestions-loading {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          color: var(--text-muted, #71717a);
+          padding: 4px 0;
+        }
+        @keyframes cp-spin-anim {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .cp-spin { animation: cp-spin-anim 1s linear infinite; }
+
+        .cp-suggestion {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          padding: 6px 4px;
+          border-bottom: 1px solid var(--border, #27272a);
+          font-size: 12px;
+        }
+        .cp-suggestion:last-child { border-bottom: none; }
+        .cp-suggestion-type {
+          display: inline-block;
+          padding: 1px 5px;
+          border-radius: 3px;
+          font-size: 9px;
+          font-weight: 600;
+          text-transform: uppercase;
+          width: fit-content;
+        }
+        .cp-stype-related_note { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+        .cp-stype-overdue_action { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .cp-stype-stale_project { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+        .cp-stype-person_followup { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+        .cp-stype-pattern { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+        .cp-stype-decision_needed { background: rgba(236, 72, 153, 0.15); color: #ec4899; }
+        .cp-suggestion-title {
+          color: var(--text-primary, #e4e4e7);
+          font-weight: 500;
+        }
+        .cp-suggestion-desc {
+          color: var(--text-muted, #71717a);
+          font-size: 11px;
+          line-height: 1.4;
         }
       `}</style>
     </div>

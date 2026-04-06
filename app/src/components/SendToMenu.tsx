@@ -13,7 +13,7 @@ import { createNoteAndProcess } from "../lib/dataPipeline";
 import {
   Send,
   FileText,
-  Brain,
+  MessageSquare,
   CheckSquare,
   Calendar,
   ChevronDown,
@@ -78,14 +78,14 @@ export function SendToMenu({ content, title, source, compact }: SendToMenuProps)
 
   const handleSendToAI = useCallback(() => {
     setOpen(false);
-    // Store content in sessionStorage for AI Tools Hub to pick up
+    // Store content in sessionStorage for RAG panel to pick up
     sessionStorage.setItem("einstein-ai-context", JSON.stringify({
       content,
       title: title || "",
       source: source || "",
     }));
-    dispatch({ type: "SET_SIDEBAR_VIEW", view: "aitools" });
-    showFeedback("Sent to AI Tools");
+    dispatch({ type: "SET_SIDEBAR_VIEW", view: "rag" });
+    showFeedback("Sent to Ask Notes");
   }, [content, title, source, dispatch, showFeedback]);
 
   const handleCreateTask = useCallback(async () => {
@@ -166,8 +166,8 @@ export function SendToMenu({ content, title, source, compact }: SendToMenuProps)
             <span>Save as Note</span>
           </button>
           <button className="stm-option" onClick={handleSendToAI}>
-            <Brain size={14} />
-            <span>Send to AI Tools</span>
+            <MessageSquare size={14} />
+            <span>Ask AI</span>
           </button>
           <div className="stm-divider" />
           <button className="stm-option" onClick={handleCreateTask}>

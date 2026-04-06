@@ -22,6 +22,9 @@ from src.infrastructure.repositories.thought_repository import (
     PostgreSQLThoughtRepository,
 )
 from src.infrastructure.repositories.user_repository import PostgreSQLUserRepository
+from src.infrastructure.repositories.context_event_repository import (
+    ContextEventRepository,
+)
 from src.infrastructure.services.embedding_service import OpenAIEmbeddingService
 from src.infrastructure.services.vector_store_service import PineconeVectorStore
 from src.infrastructure.services.authentication_service import JWTAuthenticationService
@@ -191,6 +194,12 @@ class Container(containers.DeclarativeContainer):
         database=db,
         user_repository=user_repository,
         thought_repository=thought_repository,
+    )
+
+    # Context aggregation engine (Phase 0)
+    context_event_repository = providers.Singleton(
+        ContextEventRepository,
+        database=db,
     )
 
     # Middleware

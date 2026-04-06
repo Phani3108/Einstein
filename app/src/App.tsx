@@ -22,13 +22,8 @@ import { ExportImport } from "./components/ExportImport";
 import { PluginPanel } from "./components/PluginPanel";
 import { BookmarksPanel } from "./components/BookmarksPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { DevHub } from "./components/DevHub";
-import { IntegrationsHub } from "./components/IntegrationsHub";
 import { WikilinkPreview } from "./components/WikilinkPreview";
-import { AIToolsHub } from "./components/AIToolsHub";
 import { InsightsDashboard } from "./components/InsightsDashboard";
-import { DataExchange } from "./components/DataExchange";
-import { PrivacyCenter } from "./components/PrivacyCenter";
 import { RAGPanel } from "./components/RAGPanel";
 import { MeetingsPanel } from "./components/MeetingsPanel";
 import { ActionItemsDashboard } from "./components/ActionItemsDashboard";
@@ -39,7 +34,7 @@ import { FloatingVoiceButton } from "./components/VoiceInput";
 import { syncManager } from "./lib/sync";
 import {
   PenTool, Columns3, Download, Link2, Puzzle,
-  Brain, Lightbulb, ArrowLeftRight, Shield,
+  Lightbulb,
   MessageSquare, Video, CheckSquare, LayoutDashboard,
 } from "lucide-react";
 import "./styles/global.css";
@@ -53,10 +48,7 @@ const SECONDARY_TABS: { view: SidebarView; label: string; icon: React.ReactNode 
   { view: "canvas", label: "Canvas", icon: <PenTool size={13} /> },
   { view: "kanban", label: "Kanban", icon: <Columns3 size={13} /> },
   { view: "backlinks", label: "Backlinks", icon: <Link2 size={13} /> },
-  { view: "aitools", label: "AI Tools", icon: <Brain size={13} /> },
   { view: "insights", label: "Insights", icon: <Lightbulb size={13} /> },
-  { view: "dataexchange", label: "Data", icon: <ArrowLeftRight size={13} /> },
-  { view: "privacy", label: "Privacy", icon: <Shield size={13} /> },
   { view: "export", label: "Export", icon: <Download size={13} /> },
   { view: "plugins", label: "Plugins", icon: <Puzzle size={13} /> },
 ];
@@ -217,18 +209,8 @@ function App() {
         return <BookmarksPanel />;
       case "settings":
         return <SettingsPanel />;
-      case "devhub":
-        return <DevHub />;
-      case "integrations":
-        return <IntegrationsHub />;
-      case "aitools":
-        return <AIToolsHub />;
       case "insights":
         return <InsightsDashboard />;
-      case "dataexchange":
-        return <DataExchange />;
-      case "privacy":
-        return <PrivacyCenter />;
       case "rag":
         return <RAGPanel />;
       case "meetings":
@@ -249,7 +231,7 @@ function App() {
   );
   const showLegacyRightPanel = state.rightPanelOpen && !showContextPanel && ["backlinks", "search", "bookmarks"].includes(state.sidebarView);
   // Always show secondary tabs unless on full-page views or contextMode detail views
-  const fullPageViews = ["settings", "devhub", "integrations"];
+  const fullPageViews = ["settings"];
   const showSecondaryTabs = !fullPageViews.includes(state.sidebarView) && !contextModeActive;
 
   return (

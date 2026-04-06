@@ -1,7 +1,7 @@
 import { createContext, useContext } from "react";
 import type { Note } from "./api";
 
-export type SidebarView = "files" | "search" | "graph" | "backlinks" | "canvas" | "calendar" | "kanban" | "export" | "plugins" | "settings" | "bookmarks" | "devhub" | "integrations" | "aitools" | "insights" | "dataexchange" | "privacy" | "rag" | "meetings" | "actions" | "contexthub";
+export type SidebarView = "files" | "search" | "graph" | "backlinks" | "canvas" | "calendar" | "kanban" | "export" | "plugins" | "settings" | "bookmarks" | "insights" | "rag" | "meetings" | "actions" | "contexthub";
 
 /* ------------------------------------------------------------------ */
 /*  Context Mode — replaces tab-based routing with contextual routing   */

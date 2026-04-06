@@ -180,6 +180,25 @@ export interface NoteMetadataRecord {
   source_type: string;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Temporal intelligence types (Phase 2)                              */
+/* ------------------------------------------------------------------ */
+
+export interface PrepPack {
+  summary: string;
+  key_points: string[];
+  open_questions: string[];
+  relevant_history: string[];
+  suggested_actions: string[];
+}
+
+export interface AISuggestion {
+  type: "related_note" | "overdue_action" | "stale_project" | "person_followup" | "pattern" | "decision_needed";
+  title: string;
+  description: string;
+  confidence: number;
+}
+
 export const api = {
   // --- Vault operations (Tauri IPC) ---
   openVault: (path: string): Promise<Note[]> => invoke("open_vault", { path }),
@@ -440,6 +459,93 @@ export const api = {
       return res.json();
     } catch {
       return { connections: [] };
+    }
+  },
+
+  // --- Temporal Intelligence (Phase 2) ---
+
+  /** Generate a preparation brief for a meeting, day, or project */
+  prepareContext: async (
+    focusType: "meeting" | "day" | "project",
+    context: Record<string, unknown>,
+    notes: Record<string, unknown>[],
+    actions: Record<string, unknown>[],
+    decisions: Record<string, unknown>[],
+  ): Promise<PrepPack> => {
+    try {
+      const res = await fetch(`${SIDECAR_URL}/context/prepare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          focus_type: focusType,
+          context,
+          notes,
+          actions,
+          decisions,
+        }),
+      });
+      if (!res.ok) return { summary: "", key_points: [], open_questions: [], relevant_history: [], suggested_actions: [] };
+      return res.json();
+    } catch {
+      return { summary: "", key_points: [], open_questions: [], relevant_history: [], suggested_actions: [] };
+    }
+  },
+
+  /** Get proactive AI suggestions based on current context */
+  getSuggestions: async (
+    currentNoteId: string | null,
+    currentNoteTitle: string | null,
+    currentProjectId: string | null,
+    recentNotes: Record<string, unknown>[],
+    actions: Record<string, unknown>[],
+    people: Record<string, unknown>[],
+    projects: Record<string, unknown>[],
+  ): Promise<AISuggestion[]> => {
+    try {
+      const res = await fetch(`${SIDECAR_URL}/context/suggestions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          current_note_id: currentNoteId,
+          current_note_title: currentNoteTitle,
+          current_project_id: currentProjectId,
+          recent_notes: recentNotes,
+          actions,
+          people,
+          projects,
+        }),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.suggestions ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** Extract associations between a note and known projects/people */
+  extractAssociations: async (
+    content: string,
+    noteId: string,
+    knownProjects: { id: string; title: string }[],
+    knownPeople: { id: string; name: string }[],
+  ): Promise<{ object_type: string; object_id: string; relationship: string; confidence: number }[]> => {
+    try {
+      const res = await fetch(`${SIDECAR_URL}/extract-associations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          note_id: noteId,
+          known_projects: knownProjects,
+          known_people: knownPeople,
+        }),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.associations ?? [];
+    } catch {
+      return [];
     }
   },
 };
