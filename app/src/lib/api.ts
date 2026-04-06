@@ -1,4 +1,34 @@
-import { invoke } from "@tauri-apps/api/core";
+// Cloud API configuration
+const CLOUD_API = localStorage.getItem("einstein_server_url") || "http://localhost:8000";
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem("einstein_auth_token");
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const headers = { ...authHeaders(), ...(options.headers as Record<string, string> || {}) };
+  let res = await fetch(url, { ...options, headers });
+
+  // Retry once on 5xx
+  if (res.status >= 500) {
+    await new Promise((r) => setTimeout(r, 1000));
+    res = await fetch(url, { ...options, headers });
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`API error ${res.status}: ${body}`);
+  }
+
+  // Handle 204 No Content
+  if (res.status === 204) return undefined as unknown as T;
+
+  return res.json();
+}
 
 export interface Note {
   id: string;
@@ -200,119 +230,196 @@ export interface AISuggestion {
 }
 
 export const api = {
-  // --- Vault operations (Tauri IPC) ---
-  openVault: (path: string): Promise<Note[]> => invoke("open_vault", { path }),
-  listNotes: (): Promise<Note[]> => invoke("list_notes"),
-  getNote: (id: string): Promise<Note | null> => invoke("get_note", { id }),
+  // --- Vault operations (Cloud API) ---
+  openVault: (path: string): Promise<Note[]> =>
+    request<Note[]>(`${CLOUD_API}/api/v1/vault/open`, {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  listNotes: (): Promise<Note[]> =>
+    request<Note[]>(`${CLOUD_API}/api/v1/vault/notes`),
+  getNote: (id: string): Promise<Note | null> =>
+    request<Note | null>(`${CLOUD_API}/api/v1/vault/notes/${encodeURIComponent(id)}`),
   saveNote: (
     filePath: string,
     title: string,
     content: string,
     frontmatter: Record<string, string>
   ): Promise<Note> =>
-    invoke("save_note", {
-      filePath,
-      title,
-      content,
-      frontmatter,
+    request<Note>(`${CLOUD_API}/api/v1/vault/notes`, {
+      method: "PUT",
+      body: JSON.stringify({ filePath, title, content, frontmatter }),
     }),
-  deleteNote: (id: string): Promise<void> => invoke("delete_note", { id }),
+  deleteNote: (id: string): Promise<void> =>
+    request<void>(`${CLOUD_API}/api/v1/vault/notes/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   searchNotes: (query: string): Promise<Note[]> =>
-    invoke("search_notes", { query }),
+    request<Note[]>(`${CLOUD_API}/api/v1/vault/notes/search?q=${encodeURIComponent(query)}`),
   getBacklinks: (noteId: string): Promise<Note[]> =>
-    invoke("get_backlinks", { noteId }),
-  getGraphData: (): Promise<GraphData> => invoke("get_graph_data"),
-  createDailyNote: (): Promise<Note> => invoke("create_daily_note"),
+    request<Note[]>(`${CLOUD_API}/api/v1/vault/notes/${encodeURIComponent(noteId)}/backlinks`),
+  getGraphData: (): Promise<GraphData> =>
+    request<GraphData>(`${CLOUD_API}/api/v1/vault/graph`),
+  createDailyNote: (): Promise<Note> =>
+    request<Note>(`${CLOUD_API}/api/v1/vault/notes/daily`, {
+      method: "POST",
+    }),
 
   // --- New vault operations ---
   renameNote: (id: string, newTitle: string, newFilePath: string): Promise<Note> =>
-    invoke("rename_note", { id, newTitle, newFilePath }),
+    request<Note>(`${CLOUD_API}/api/v1/vault/notes/${encodeURIComponent(id)}/rename`, {
+      method: "PATCH",
+      body: JSON.stringify({ newTitle, newFilePath }),
+    }),
   getNoteVersions: (noteId: string): Promise<NoteVersion[]> =>
-    invoke("get_note_versions", { noteId }),
+    request<NoteVersion[]>(`${CLOUD_API}/api/v1/vault/versions/${encodeURIComponent(noteId)}`),
   restoreVersion: (versionId: string): Promise<Note> =>
-    invoke("restore_version", { versionId }),
+    request<Note>(`${CLOUD_API}/api/v1/vault/versions/${encodeURIComponent(versionId)}/restore`, {
+      method: "POST",
+    }),
   toggleBookmark: (noteId: string): Promise<boolean> =>
-    invoke("toggle_bookmark", { noteId }),
+    request<boolean>(`${CLOUD_API}/api/v1/vault/bookmarks/${encodeURIComponent(noteId)}/toggle`, {
+      method: "POST",
+    }),
   listBookmarks: (): Promise<Note[]> =>
-    invoke("list_bookmarks"),
+    request<Note[]>(`${CLOUD_API}/api/v1/vault/bookmarks`),
   getAllTags: (): Promise<TagInfo[]> =>
-    invoke("get_all_tags"),
+    request<TagInfo[]>(`${CLOUD_API}/api/v1/vault/tags`),
   getConfig: (key: string): Promise<string | null> =>
-    invoke("get_config", { key }),
+    request<string | null>(`${CLOUD_API}/api/v1/vault/config/${encodeURIComponent(key)}`),
   setConfig: (key: string, value: string): Promise<void> =>
-    invoke("set_config", { key, value }),
+    request<void>(`${CLOUD_API}/api/v1/vault/config/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      body: JSON.stringify({ value }),
+    }),
   listTemplates: (): Promise<TemplateInfo[]> =>
-    invoke("list_templates"),
+    request<TemplateInfo[]>(`${CLOUD_API}/api/v1/vault/templates`),
   createFromTemplate: (templateName: string, noteTitle: string): Promise<Note> =>
-    invoke("create_from_template", { templateName, noteTitle }),
+    request<Note>(`${CLOUD_API}/api/v1/vault/templates/apply`, {
+      method: "POST",
+      body: JSON.stringify({ templateName, noteTitle }),
+    }),
   mergeNotes: (ids: string[], newTitle: string): Promise<Note> =>
-    invoke("merge_notes", { ids, newTitle }),
+    request<Note>(`${CLOUD_API}/api/v1/vault/notes/merge`, {
+      method: "POST",
+      body: JSON.stringify({ ids, newTitle }),
+    }),
 
-  // --- Projects (Tauri IPC) ---
+  // --- Projects (Cloud API) ---
   createProject: (title: string, description: string, category: string, goal: string, deadline?: string): Promise<Project> =>
-    invoke("create_project", { title, description, category, goal, deadline: deadline ?? null }),
+    request<Project>(`${CLOUD_API}/api/v1/vault/projects`, {
+      method: "POST",
+      body: JSON.stringify({ title, description, category, goal, deadline: deadline ?? null }),
+    }),
   updateProject: (id: string, changes: { title?: string; description?: string; status?: string; category?: string; goal?: string; deadline?: string }): Promise<Project> =>
-    invoke("update_project", { id, ...changes }),
-  listProjects: (statusFilter?: string): Promise<Project[]> =>
-    invoke("list_projects", { statusFilter: statusFilter ?? null }),
+    request<Project>(`${CLOUD_API}/api/v1/vault/projects/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(changes),
+    }),
+  listProjects: (statusFilter?: string): Promise<Project[]> => {
+    const params = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
+    return request<Project[]>(`${CLOUD_API}/api/v1/vault/projects${params}`);
+  },
   getProject: (id: string): Promise<Project> =>
-    invoke("get_project", { id }),
+    request<Project>(`${CLOUD_API}/api/v1/vault/projects/${encodeURIComponent(id)}`),
   deleteProject: (id: string): Promise<void> =>
-    invoke("delete_project", { id }),
+    request<void>(`${CLOUD_API}/api/v1/vault/projects/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
 
-  // --- People (Tauri IPC) ---
+  // --- People (Cloud API) ---
   createPerson: (name: string, role: string, organization: string, email: string, notes: string): Promise<Person> =>
-    invoke("create_person", { name, role, organization, email, notes }),
+    request<Person>(`${CLOUD_API}/api/v1/vault/people`, {
+      method: "POST",
+      body: JSON.stringify({ name, role, organization, email, notes }),
+    }),
   updatePerson: (id: string, changes: { name?: string; role?: string; organization?: string; email?: string; notes?: string; lastContact?: string }): Promise<Person> =>
-    invoke("update_person", { id, ...changes }),
+    request<Person>(`${CLOUD_API}/api/v1/vault/people/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(changes),
+    }),
   listPeople: (): Promise<Person[]> =>
-    invoke("list_people"),
+    request<Person[]>(`${CLOUD_API}/api/v1/vault/people`),
   getPerson: (id: string): Promise<Person> =>
-    invoke("get_person", { id }),
+    request<Person>(`${CLOUD_API}/api/v1/vault/people/${encodeURIComponent(id)}`),
   deletePerson: (id: string): Promise<void> =>
-    invoke("delete_person", { id }),
+    request<void>(`${CLOUD_API}/api/v1/vault/people/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   searchPeople: (query: string): Promise<Person[]> =>
-    invoke("search_people", { query }),
+    request<Person[]>(`${CLOUD_API}/api/v1/vault/people?q=${encodeURIComponent(query)}`),
 
-  // --- Decisions (Tauri IPC) ---
+  // --- Decisions (Cloud API) ---
   createDecision: (title: string, description: string, reasoning: string, alternatives: string, revisitDate?: string): Promise<Decision> =>
-    invoke("create_decision", { title, description, reasoning, alternatives, revisitDate: revisitDate ?? null }),
+    request<Decision>(`${CLOUD_API}/api/v1/vault/decisions`, {
+      method: "POST",
+      body: JSON.stringify({ title, description, reasoning, alternatives, revisitDate: revisitDate ?? null }),
+    }),
   updateDecision: (id: string, changes: { title?: string; description?: string; reasoning?: string; alternatives?: string; status?: string; revisitDate?: string }): Promise<Decision> =>
-    invoke("update_decision", { id, ...changes }),
-  listDecisions: (statusFilter?: string): Promise<Decision[]> =>
-    invoke("list_decisions", { statusFilter: statusFilter ?? null }),
+    request<Decision>(`${CLOUD_API}/api/v1/vault/decisions/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(changes),
+    }),
+  listDecisions: (statusFilter?: string): Promise<Decision[]> => {
+    const params = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
+    return request<Decision[]>(`${CLOUD_API}/api/v1/vault/decisions${params}`);
+  },
   getDecision: (id: string): Promise<Decision> =>
-    invoke("get_decision", { id }),
+    request<Decision>(`${CLOUD_API}/api/v1/vault/decisions/${encodeURIComponent(id)}`),
+  deleteDecision: (id: string): Promise<void> =>
+    request<void>(`${CLOUD_API}/api/v1/vault/decisions/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
-  // --- Note Associations (Tauri IPC) ---
+  // --- Note Associations (Cloud API) ---
   createAssociation: (noteId: string, objectType: string, objectId: string, relationship: string, confidence: number): Promise<NoteAssociation> =>
-    invoke("create_association", { noteId, objectType, objectId, relationship, confidence }),
+    request<NoteAssociation>(`${CLOUD_API}/api/v1/vault/associations`, {
+      method: "POST",
+      body: JSON.stringify({ noteId, objectType, objectId, relationship, confidence }),
+    }),
   getAssociationsForNote: (noteId: string): Promise<NoteAssociation[]> =>
-    invoke("get_associations_for_note", { noteId }),
+    request<NoteAssociation[]>(`${CLOUD_API}/api/v1/vault/associations?noteId=${encodeURIComponent(noteId)}`),
   getAssociationsForObject: (objectType: string, objectId: string): Promise<NoteAssociation[]> =>
-    invoke("get_associations_for_object", { objectType, objectId }),
+    request<NoteAssociation[]>(`${CLOUD_API}/api/v1/vault/associations?objectType=${encodeURIComponent(objectType)}&objectId=${encodeURIComponent(objectId)}`),
   deleteAssociation: (id: string): Promise<void> =>
-    invoke("delete_association", { id }),
+    request<void>(`${CLOUD_API}/api/v1/vault/associations/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
 
-  // --- Note Metadata (Tauri IPC) ---
+  // --- Note Metadata (Cloud API) ---
   getNoteMetadata: (noteId: string): Promise<NoteMetadataRecord> =>
-    invoke("get_note_metadata", { noteId }),
+    request<NoteMetadataRecord>(`${CLOUD_API}/api/v1/vault/metadata/${encodeURIComponent(noteId)}`),
   updateNoteMetadata: (noteId: string, changes: { lifecycle?: string; lastMeaningfulEdit?: string; viewCount?: number; importanceScore?: number; distilledAt?: string; sourceType?: string }): Promise<NoteMetadataRecord> =>
-    invoke("update_note_metadata", { noteId, ...changes }),
+    request<NoteMetadataRecord>(`${CLOUD_API}/api/v1/vault/metadata/${encodeURIComponent(noteId)}`, {
+      method: "PUT",
+      body: JSON.stringify(changes),
+    }),
   getStaleNotes: (daysThreshold: number): Promise<Note[]> =>
-    invoke("get_stale_notes", { daysThreshold }),
+    request<Note[]>(`${CLOUD_API}/api/v1/vault/notes?stale=${encodeURIComponent(daysThreshold)}`),
 
-  // --- Action items & Calendar events (Tauri IPC) ---
+  // --- Action items & Calendar events (Cloud API) ---
   saveActionItems: (noteId: string, items: ActionItemData[]): Promise<void> =>
-    invoke("save_action_items", { noteId, items }),
-  getActionItems: (noteId?: string, status?: string): Promise<ActionItemRecord[]> =>
-    invoke("get_action_items", { noteId: noteId ?? null, status: status ?? null }),
+    request<void>(`${CLOUD_API}/api/v1/vault/action-items`, {
+      method: "POST",
+      body: JSON.stringify({ noteId, items }),
+    }),
+  getActionItems: (noteId?: string, status?: string): Promise<ActionItemRecord[]> => {
+    const params = new URLSearchParams();
+    if (noteId) params.set("noteId", noteId);
+    if (status) params.set("status", status);
+    const qs = params.toString();
+    return request<ActionItemRecord[]>(`${CLOUD_API}/api/v1/vault/action-items${qs ? `?${qs}` : ""}`);
+  },
   updateActionStatus: (id: string, status: string): Promise<void> =>
-    invoke("update_action_status", { id, status }),
+    request<void>(`${CLOUD_API}/api/v1/vault/action-items/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
   saveCalendarEvents: (noteId: string, events: CalendarEventData[]): Promise<void> =>
-    invoke("save_calendar_events", { noteId, events }),
+    request<void>(`${CLOUD_API}/api/v1/vault/calendar-events`, {
+      method: "POST",
+      body: JSON.stringify({ noteId, events }),
+    }),
   getCalendarEvents: (startDate: string, endDate: string): Promise<CalendarEventRecord[]> =>
-    invoke("get_calendar_events", { startDate, endDate }),
+    request<CalendarEventRecord[]>(`${CLOUD_API}/api/v1/vault/calendar-events?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`),
 
   // --- AI sidecar operations (HTTP) ---
   sidecarHealth: async (): Promise<SidecarHealth | null> => {

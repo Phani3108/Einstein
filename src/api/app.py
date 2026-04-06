@@ -20,6 +20,8 @@ from src.api.routes.admin import router as admin_router
 from src.api.routes.context import create_context_router
 from src.api.routes.insights import create_insights_router
 from src.api.routes.reflection import create_reflection_router
+from src.api.routes.distillation import create_distillation_router
+from src.api.routes.ai_tools import create_ai_tools_router
 from src.api.error_handlers import (
     domain_exception_handler,
     http_exception_handler,
@@ -166,6 +168,14 @@ def create_app() -> FastAPI:
                 "name": "reflection",
                 "description": "Reflection & review — relationship strength, weekly/monthly reviews, person dossiers",
             },
+            {
+                "name": "distillation",
+                "description": "Distillation — summarize verbose events into concise distilled summaries",
+            },
+            {
+                "name": "tools",
+                "description": "Contextual AI tools — summarize, connect, prepare, extract, ask",
+            },
         ],
         openapi_url="/api/v1/openapi.json",
         docs_url=None,  # We'll create a custom docs endpoint
@@ -242,6 +252,22 @@ def create_app() -> FastAPI:
         auth_middleware=container.auth_middleware(),
     )
     app.include_router(reflection_router)
+
+    # Distillation routes (Phase 4C)
+    distillation_router = create_distillation_router(
+        context_repo=container.context_event_repository(),
+        llm_service=container.llm_service(),
+        auth_middleware=container.auth_middleware(),
+    )
+    app.include_router(distillation_router)
+
+    # Contextual AI tools routes (Phase 4D)
+    ai_tools_router = create_ai_tools_router(
+        context_repo=container.context_event_repository(),
+        llm_service=container.llm_service(),
+        auth_middleware=container.auth_middleware(),
+    )
+    app.include_router(ai_tools_router)
 
     # Customize OpenAPI schema
     def custom_openapi():

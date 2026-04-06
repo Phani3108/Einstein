@@ -18,8 +18,9 @@ import {
   ArrowRight,
   Search,
 } from "lucide-react";
-import { homeDir } from "@tauri-apps/api/path";
-import { open } from "@tauri-apps/plugin-dialog";
+// Cloud mode stubs — Tauri file dialog replaced with manual path input
+const homeDir = async () => "/home/user";
+const open = async (_opts: Record<string, unknown>): Promise<string | null> => null;
 
 type OnboardStep = "welcome" | "language" | "vault" | "preferences" | "ready";
 

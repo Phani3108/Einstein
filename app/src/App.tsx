@@ -4,6 +4,8 @@ import type { SidebarView } from "./lib/store";
 import { initLanguage } from "./lib/i18n";
 import { api } from "./lib/api";
 import { processNoteThroughPipeline, loadCentralState } from "./lib/dataPipeline";
+import ErrorBoundary from "./components/ErrorBoundary";
+import OfflineBanner from "./components/OfflineBanner";
 import { Sidebar } from "./components/Sidebar";
 import { Editor } from "./components/Editor";
 import { RightPanel } from "./components/RightPanel";
@@ -179,48 +181,48 @@ function App() {
       case "home":
         // Only render BrainHome if sidebarView is "contexthub" or "files" (default)
         if (state.sidebarView === "contexthub" || state.sidebarView === "files") {
-          return <BrainHome />;
+          return <ErrorBoundary name="MainContent"><BrainHome /></ErrorBoundary>;
         }
         break;
       case "project":
-        return <ProjectDetail projectId={mode.projectId} />;
+        return <ErrorBoundary name="MainContent"><ProjectDetail projectId={mode.projectId} /></ErrorBoundary>;
       case "person":
-        return <PersonDetail personId={mode.personId} />;
+        return <ErrorBoundary name="MainContent"><PersonDetail personId={mode.personId} /></ErrorBoundary>;
       case "decision":
-        return <DecisionDetail decisionId={mode.decisionId} />;
+        return <ErrorBoundary name="MainContent"><DecisionDetail decisionId={mode.decisionId} /></ErrorBoundary>;
       // Other contextMode types fall through to sidebarView
     }
 
     // Legacy sidebarView routing (preserved during migration)
     switch (state.sidebarView) {
       case "graph":
-        return <GraphView />;
+        return <ErrorBoundary name="MainContent"><GraphView /></ErrorBoundary>;
       case "canvas":
-        return <CanvasView />;
+        return <ErrorBoundary name="MainContent"><CanvasView /></ErrorBoundary>;
       case "calendar":
-        return <CalendarView />;
+        return <ErrorBoundary name="MainContent"><CalendarView /></ErrorBoundary>;
       case "kanban":
-        return <KanbanView />;
+        return <ErrorBoundary name="MainContent"><KanbanView /></ErrorBoundary>;
       case "export":
-        return <ExportImport />;
+        return <ErrorBoundary name="MainContent"><ExportImport /></ErrorBoundary>;
       case "plugins":
-        return <PluginPanel />;
+        return <ErrorBoundary name="MainContent"><PluginPanel /></ErrorBoundary>;
       case "bookmarks":
-        return <BookmarksPanel />;
+        return <ErrorBoundary name="MainContent"><BookmarksPanel /></ErrorBoundary>;
       case "settings":
-        return <SettingsPanel />;
+        return <ErrorBoundary name="MainContent"><SettingsPanel /></ErrorBoundary>;
       case "insights":
-        return <InsightsDashboard />;
+        return <ErrorBoundary name="MainContent"><InsightsDashboard /></ErrorBoundary>;
       case "rag":
-        return <RAGPanel />;
+        return <ErrorBoundary name="MainContent"><RAGPanel /></ErrorBoundary>;
       case "meetings":
-        return <MeetingsPanel />;
+        return <ErrorBoundary name="MainContent"><MeetingsPanel /></ErrorBoundary>;
       case "actions":
-        return <ActionItemsDashboard />;
+        return <ErrorBoundary name="MainContent"><ActionItemsDashboard /></ErrorBoundary>;
       case "contexthub":
-        return <BrainHome />;
+        return <ErrorBoundary name="MainContent"><BrainHome /></ErrorBoundary>;
       default:
-        return <Editor />;
+        return <ErrorBoundary name="MainContent"><Editor /></ErrorBoundary>;
     }
   };
 
@@ -236,6 +238,8 @@ function App() {
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
+      <ErrorBoundary name="App">
+      <OfflineBanner />
       <div className="app-layout">
         <Sidebar />
         <div className="center-panel">
@@ -259,10 +263,10 @@ function App() {
           )}
           {renderMainContent()}
         </div>
-        {showContextPanel && <ContextPanel />}
+        {showContextPanel && <ErrorBoundary name="ContextPanel"><ContextPanel /></ErrorBoundary>}
         {showLegacyRightPanel && <RightPanel />}
       </div>
-      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+      <ErrorBoundary name="CommandPalette"><CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} /></ErrorBoundary>
       <SearchModal />
       <WikilinkPreview />
       <NoteNameModal
@@ -280,6 +284,7 @@ function App() {
           }
         }}
       />
+      </ErrorBoundary>
     </AppContext.Provider>
   );
 }

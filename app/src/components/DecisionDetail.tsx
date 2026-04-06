@@ -138,8 +138,7 @@ export function DecisionDetail({ decisionId }: { decisionId: string }) {
 
   const handleDelete = useCallback(async () => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("delete_decision", { id: decisionId });
+      await api.deleteDecision(decisionId);
     } catch {
       // backend may not have delete — continue with local removal
     }
