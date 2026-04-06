@@ -8,13 +8,15 @@ from uuid import UUID
 from sqlalchemy import select, and_, desc, func, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from src.domain.entities.context_event import ContextEvent, Connection, PersonProfile, Project
+from src.domain.entities.context_event import ContextEvent, Connection, PersonProfile, Project, Commitment
 from src.infrastructure.database.connection import Database
 from src.infrastructure.database.models import (
     ContextEventModel,
     ConnectionModel,
     PersonProfileModel,
     ProjectModel,
+    CommitmentModel,
+    ResurfacingLogModel,
 )
 
 
@@ -239,3 +241,111 @@ class ContextEventRepository:
             stmt = stmt.order_by(desc(ProjectModel.updated_at))
             result = await session.execute(stmt)
             return [row.to_domain() for row in result.scalars().all()]
+
+    # ---- Commitments ----
+
+    async def create_commitment(self, commitment: Commitment) -> Commitment:
+        """Create a new commitment."""
+        async with self._database.session() as session:
+            model = CommitmentModel.from_domain(commitment)
+            session.add(model)
+            await session.commit()
+            await session.refresh(model)
+            return model.to_domain()
+
+    async def get_commitments(
+        self,
+        user_id: UUID,
+        status: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Commitment]:
+        """Get commitments for a user."""
+        async with self._database.session() as session:
+            stmt = select(CommitmentModel).where(CommitmentModel.user_id == user_id)
+            if status:
+                stmt = stmt.where(CommitmentModel.status == status)
+            stmt = stmt.order_by(desc(CommitmentModel.created_at)).limit(limit)
+            result = await session.execute(stmt)
+            return [row.to_domain() for row in result.scalars().all()]
+
+    async def update_commitment_status(self, commitment_id: UUID, status: str, fulfilled_event_id: Optional[UUID] = None) -> None:
+        """Update a commitment's status."""
+        async with self._database.session() as session:
+            values = {"status": status, "updated_at": datetime.now()}
+            if fulfilled_event_id:
+                values["fulfilled_event_id"] = fulfilled_event_id
+            stmt = (
+                update(CommitmentModel)
+                .where(CommitmentModel.id == commitment_id)
+                .values(**values)
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+    # ---- Temporal Memory ----
+
+    async def get_dormant_people(self, user_id: UUID, min_days: int = 21, limit: int = 20) -> List[PersonProfile]:
+        """Get people who haven't been interacted with recently."""
+        async with self._database.session() as session:
+            stmt = (
+                select(PersonProfileModel)
+                .where(
+                    and_(
+                        PersonProfileModel.user_id == user_id,
+                        PersonProfileModel.dormancy_days >= min_days,
+                    )
+                )
+                .order_by(desc(PersonProfileModel.dormancy_days))
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            return [row.to_domain() for row in result.scalars().all()]
+
+    async def get_dormant_projects(self, user_id: UUID, min_days: int = 14, limit: int = 20) -> List[Project]:
+        """Get active projects that haven't had activity recently."""
+        async with self._database.session() as session:
+            stmt = (
+                select(ProjectModel)
+                .where(
+                    and_(
+                        ProjectModel.user_id == user_id,
+                        ProjectModel.status == "active",
+                        ProjectModel.dormancy_days >= min_days,
+                    )
+                )
+                .order_by(desc(ProjectModel.dormancy_days))
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            return [row.to_domain() for row in result.scalars().all()]
+
+    async def update_person_activity(self, user_id: UUID, person_name: str) -> None:
+        """Update last_activity_at for a person (called when they're mentioned in a new event)."""
+        async with self._database.session() as session:
+            stmt = (
+                update(PersonProfileModel)
+                .where(
+                    and_(
+                        PersonProfileModel.user_id == user_id,
+                        PersonProfileModel.name == person_name,
+                    )
+                )
+                .values(
+                    last_activity_at=datetime.now(),
+                    interaction_count=PersonProfileModel.interaction_count + 1,
+                    last_seen=datetime.now(),
+                )
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+    async def update_project_activity(self, project_id: UUID) -> None:
+        """Update last_activity_at for a project."""
+        async with self._database.session() as session:
+            stmt = (
+                update(ProjectModel)
+                .where(ProjectModel.id == project_id)
+                .values(last_activity_at=datetime.now(), updated_at=datetime.now())
+            )
+            await session.execute(stmt)
+            await session.commit()

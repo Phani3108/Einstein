@@ -80,6 +80,10 @@ class PersonProfile(BaseModel):
     last_seen: Optional[datetime] = None
     interaction_count: int = 0
     notes: str = ""
+    # Temporal memory (Phase 2)
+    freshness_score: float = 1.0
+    last_activity_at: Optional[datetime] = None
+    dormancy_days: int = 0
     created_at: datetime = Field(default_factory=datetime.now)
 
     class Config:
@@ -95,6 +99,27 @@ class Project(BaseModel):
     description: str = ""
     status: str = "active"  # active, paused, completed, archived
     deadline: Optional[datetime] = None
+    # Temporal memory (Phase 2)
+    last_activity_at: Optional[datetime] = None
+    dormancy_days: int = 0
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+    class Config:
+        frozen = True
+
+
+class Commitment(BaseModel):
+    """A tracked commitment extracted from context events ('I'll do X by Y')."""
+
+    id: UUID
+    user_id: UUID
+    event_id: UUID
+    person_id: Optional[UUID] = None
+    description: str
+    due_date: Optional[datetime] = None
+    status: str = "open"  # open, fulfilled, overdue, cancelled
+    fulfilled_event_id: Optional[UUID] = None
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 

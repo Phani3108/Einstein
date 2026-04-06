@@ -50,6 +50,38 @@ class PatternOut(BaseModel):
     evidence: List[str] = []
 
 
+class CommitmentOut(BaseModel):
+    id: str
+    description: str
+    due_date: Optional[datetime]
+    status: str
+    person_id: Optional[str]
+    created_at: datetime
+
+
+class DormantPersonOut(BaseModel):
+    name: str
+    dormancy_days: int
+    freshness_score: float
+    last_seen: Optional[datetime]
+
+
+class DormantProjectOut(BaseModel):
+    title: str
+    dormancy_days: int
+    last_activity_at: Optional[datetime]
+
+
+class MorningBriefingOut(BaseModel):
+    date: str
+    summary: str = ""
+    overdue_commitments: List[Dict[str, Any]] = []
+    stale_people: List[Dict[str, Any]] = []
+    stale_projects: List[Dict[str, Any]] = []
+    today_event_count: int = 0
+    attention_items: List[str] = []
+
+
 class PersonInsightOut(BaseModel):
     person_id: str
     name: str
@@ -267,5 +299,95 @@ Today: {datetime.now().isoformat()[:10]}"""
         ]
 
         return patterns
+
+    # ---- Temporal Memory & Resurfacing (Phase 2) ----
+
+    @router.get("/commitments", response_model=List[CommitmentOut])
+    async def get_commitments(
+        status: Optional[str] = None,
+        user: User = Depends(auth_middleware.require_authentication),
+    ):
+        """Get tracked commitments."""
+        commitments = await context_repo.get_commitments(user.id, status=status)
+        return [
+            CommitmentOut(
+                id=str(c.id),
+                description=c.description,
+                due_date=c.due_date,
+                status=c.status,
+                person_id=str(c.person_id) if c.person_id else None,
+                created_at=c.created_at,
+            )
+            for c in commitments
+        ]
+
+    @router.get("/dormant/people", response_model=List[DormantPersonOut])
+    async def get_dormant_people(
+        min_days: int = Query(default=21, le=90),
+        user: User = Depends(auth_middleware.require_authentication),
+    ):
+        """Get people you haven't interacted with recently."""
+        people = await context_repo.get_dormant_people(user.id, min_days=min_days)
+        return [
+            DormantPersonOut(
+                name=p.name,
+                dormancy_days=p.dormancy_days,
+                freshness_score=p.freshness_score,
+                last_seen=p.last_seen,
+            )
+            for p in people
+        ]
+
+    @router.get("/dormant/projects", response_model=List[DormantProjectOut])
+    async def get_dormant_projects(
+        min_days: int = Query(default=14, le=90),
+        user: User = Depends(auth_middleware.require_authentication),
+    ):
+        """Get active projects that have gone stale."""
+        projects = await context_repo.get_dormant_projects(user.id, min_days=min_days)
+        return [
+            DormantProjectOut(
+                title=p.title,
+                dormancy_days=p.dormancy_days,
+                last_activity_at=p.last_activity_at,
+            )
+            for p in projects
+        ]
+
+    @router.get("/briefing/morning", response_model=MorningBriefingOut)
+    async def get_morning_briefing(
+        user: User = Depends(auth_middleware.require_authentication),
+    ):
+        """Get today's morning briefing with actionable intelligence."""
+        from src.infrastructure.tasks.insight_worker import generate_morning_briefing
+        from src.infrastructure.database.connection import Database
+
+        # Access the database from the repo (reuse existing connection)
+        briefing = await generate_morning_briefing(
+            context_repo._database, llm_service, user.id
+        )
+        return MorningBriefingOut(**briefing)
+
+    @router.get("/digest/weekly")
+    async def get_weekly_digest(
+        user: User = Depends(auth_middleware.require_authentication),
+    ):
+        """Get weekly activity digest."""
+        from src.infrastructure.tasks.insight_worker import generate_weekly_digest
+
+        digest = await generate_weekly_digest(
+            context_repo._database, llm_service, user.id
+        )
+        return digest
+
+    @router.post("/freshness/refresh")
+    async def refresh_freshness(
+        user: User = Depends(auth_middleware.require_authentication),
+    ):
+        """Manually trigger freshness score recalculation."""
+        from src.infrastructure.tasks.insight_worker import update_freshness_scores
+
+        stats = await update_freshness_scores(context_repo._database, user.id)
+        return stats
 
     return router

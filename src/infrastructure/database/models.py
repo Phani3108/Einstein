@@ -21,6 +21,7 @@ from src.domain.entities.context_event import (
     Connection as DomainConnection,
     PersonProfile as DomainPersonProfile,
     Project as DomainProject,
+    Commitment as DomainCommitment,
 )
 
 Base = declarative_base()
@@ -424,6 +425,7 @@ class ConnectionModel(Base):
     evidence = Column(Text, nullable=True)
     discovered_at = Column(DateTime, default=datetime.now)
     method = Column(String, default="entity_match")
+    last_confirmed_at = Column(DateTime, nullable=True)
 
     # Relationships
     source_event = relationship("ContextEventModel", foreign_keys=[source_event_id])
@@ -473,6 +475,10 @@ class PersonProfileModel(Base):
     last_seen = Column(DateTime, nullable=True)
     interaction_count = Column(Integer, default=0)
     notes = Column(Text, default="")
+    # Temporal memory (Phase 2)
+    freshness_score = Column(Float, default=1.0, nullable=False)
+    last_activity_at = Column(DateTime, nullable=True)
+    dormancy_days = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
 
     user = relationship("User")
@@ -490,6 +496,9 @@ class PersonProfileModel(Base):
             last_seen=self.last_seen,
             interaction_count=self.interaction_count,
             notes=self.notes or "",
+            freshness_score=self.freshness_score,
+            last_activity_at=self.last_activity_at,
+            dormancy_days=self.dormancy_days,
             created_at=self.created_at,
         )
 
@@ -507,6 +516,9 @@ class PersonProfileModel(Base):
             last_seen=person.last_seen,
             interaction_count=person.interaction_count,
             notes=person.notes,
+            freshness_score=person.freshness_score,
+            last_activity_at=person.last_activity_at,
+            dormancy_days=person.dormancy_days,
             created_at=person.created_at,
         )
 
@@ -522,6 +534,9 @@ class ProjectModel(Base):
     description = Column(Text, default="")
     status = Column(String, default="active")
     deadline = Column(DateTime, nullable=True)
+    # Temporal memory (Phase 2)
+    last_activity_at = Column(DateTime, nullable=True)
+    dormancy_days = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -535,6 +550,8 @@ class ProjectModel(Base):
             description=self.description or "",
             status=self.status or "active",
             deadline=self.deadline,
+            last_activity_at=self.last_activity_at,
+            dormancy_days=self.dormancy_days,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )
@@ -548,6 +565,74 @@ class ProjectModel(Base):
             description=project.description,
             status=project.status,
             deadline=project.deadline,
+            last_activity_at=project.last_activity_at,
+            dormancy_days=project.dormancy_days,
             created_at=project.created_at,
             updated_at=project.updated_at,
         )
+
+
+class CommitmentModel(Base):
+    """Tracked commitment extracted from context events."""
+
+    __tablename__ = "commitments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("context_events.id"), nullable=False)
+    person_id = Column(UUID(as_uuid=True), ForeignKey("people.id"), nullable=True)
+    description = Column(Text, nullable=False)
+    due_date = Column(DateTime, nullable=True)
+    status = Column(String(20), default="open")  # open, fulfilled, overdue, cancelled
+    fulfilled_event_id = Column(UUID(as_uuid=True), ForeignKey("context_events.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    user = relationship("User")
+    event = relationship("ContextEventModel", foreign_keys=[event_id])
+    person = relationship("PersonProfileModel")
+
+    def to_domain(self) -> DomainCommitment:
+        return DomainCommitment(
+            id=self.id,
+            user_id=self.user_id,
+            event_id=self.event_id,
+            person_id=self.person_id,
+            description=self.description,
+            due_date=self.due_date,
+            status=self.status,
+            fulfilled_event_id=self.fulfilled_event_id,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+        )
+
+    @classmethod
+    def from_domain(cls, c: DomainCommitment) -> "CommitmentModel":
+        return cls(
+            id=c.id,
+            user_id=c.user_id,
+            event_id=c.event_id,
+            person_id=c.person_id,
+            description=c.description,
+            due_date=c.due_date,
+            status=c.status,
+            fulfilled_event_id=c.fulfilled_event_id,
+            created_at=c.created_at,
+            updated_at=c.updated_at,
+        )
+
+
+class ResurfacingLogModel(Base):
+    """Log of items surfaced to the user (briefings, prep packs, suggestions)."""
+
+    __tablename__ = "resurfacing_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    type = Column(String(30), nullable=False)  # morning_briefing, meeting_prep, weekly_digest, suggestion
+    payload = Column(JSON, nullable=True)
+    delivered_at = Column(DateTime, default=datetime.now)
+    seen_at = Column(DateTime, nullable=True)
+    acted_on = Column(Boolean, default=False)
+
+    user = relationship("User")
