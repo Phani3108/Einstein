@@ -19,6 +19,7 @@ from src.api.routes.timeline import create_timeline_router
 from src.api.routes.admin import router as admin_router
 from src.api.routes.context import create_context_router
 from src.api.routes.insights import create_insights_router
+from src.api.routes.reflection import create_reflection_router
 from src.api.error_handlers import (
     domain_exception_handler,
     http_exception_handler,
@@ -161,6 +162,10 @@ def create_app() -> FastAPI:
                 "name": "insights",
                 "description": "AI-powered insights — briefings, prep packs, suggestions, patterns",
             },
+            {
+                "name": "reflection",
+                "description": "Reflection & review — relationship strength, weekly/monthly reviews, person dossiers",
+            },
         ],
         openapi_url="/api/v1/openapi.json",
         docs_url=None,  # We'll create a custom docs endpoint
@@ -229,6 +234,14 @@ def create_app() -> FastAPI:
         auth_middleware=container.auth_middleware(),
     )
     app.include_router(insights_router)
+
+    # Reflection & review routes (Phase 3)
+    reflection_router = create_reflection_router(
+        context_repo=container.context_event_repository(),
+        llm_service=container.llm_service(),
+        auth_middleware=container.auth_middleware(),
+    )
+    app.include_router(reflection_router)
 
     # Customize OpenAPI schema
     def custom_openapi():

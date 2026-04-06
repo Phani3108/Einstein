@@ -12,6 +12,14 @@ import {
   Trash2,
   Save,
   X,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  MessageSquare,
+  AlertCircle,
+  Clock,
+  Target,
+  Loader,
 } from "lucide-react";
 
 interface RelatedNote {
@@ -26,6 +34,15 @@ interface SharedProject {
   status: string;
 }
 
+interface PersonIntelligence {
+  relationship_strength: number;
+  recent_events: { date: string; source: string; content: string }[];
+  shared_topics: string[];
+  open_commitments: { description: string; due_date: string | null; status: string }[];
+  interaction_timeline: { date: string; source: string; type: string; summary: string }[];
+  suggested_talking_points: string[];
+}
+
 export function PersonDetail({ personId }: { personId: string }) {
   const { state, dispatch } = useApp();
   const person = state.people.find((p) => p.id === personId);
@@ -36,6 +53,38 @@ export function PersonDetail({ personId }: { personId: string }) {
   const [relatedNotes, setRelatedNotes] = useState<RelatedNote[]>([]);
   const [sharedProjects, setSharedProjects] = useState<SharedProject[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [intelligence, setIntelligence] = useState<PersonIntelligence | null>(null);
+  const [intelLoading, setIntelLoading] = useState(false);
+
+  // Load person intelligence (dossier) from cloud API
+  useEffect(() => {
+    let cancelled = false;
+    async function loadIntel() {
+      setIntelLoading(true);
+      try {
+        const CLOUD_API = "http://localhost:8000";
+        const res = await fetch(`${CLOUD_API}/api/v1/reflection/people/${personId}/dossier`, {
+          headers: { Authorization: "Bearer demo" },
+        });
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setIntelligence({
+            relationship_strength: data.relationship_strength ?? 0,
+            recent_events: data.recent_events ?? [],
+            shared_topics: data.shared_topics ?? [],
+            open_commitments: data.open_commitments ?? [],
+            interaction_timeline: data.interaction_timeline ?? [],
+            suggested_talking_points: data.suggested_talking_points ?? [],
+          });
+        }
+      } catch {
+        // Cloud API not available — that's fine
+      }
+      if (!cancelled) setIntelLoading(false);
+    }
+    loadIntel();
+    return () => { cancelled = true; };
+  }, [personId]);
 
   // Load associations on mount / personId change
   useEffect(() => {
@@ -452,6 +501,127 @@ export function PersonDetail({ personId }: { personId: string }) {
           font-size: 13px;
           color: #ef4444;
         }
+
+        /* ---- Person Intelligence (Phase 3) ---- */
+
+        .prd-strength-bar {
+          height: 8px;
+          background: var(--bg-primary, #1e1e2e);
+          border-radius: 4px;
+          overflow: hidden;
+          margin-bottom: 6px;
+        }
+
+        .prd-strength-fill {
+          height: 100%;
+          border-radius: 4px;
+          transition: width 0.4s var(--ease-out, ease-out);
+        }
+
+        .prd-strength-label {
+          font-size: 13px;
+          color: var(--text-muted, #71717a);
+        }
+
+        .prd-topics {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .prd-topic-tag {
+          display: inline-block;
+          padding: 3px 10px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 500;
+          background: var(--accent, #3b82f6)18;
+          color: var(--accent, #3b82f6);
+          border: 1px solid var(--accent, #3b82f6)30;
+        }
+
+        .prd-talking-points {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .prd-talking-points li {
+          position: relative;
+          padding-left: 16px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: var(--text-primary, #e4e4e7);
+        }
+
+        .prd-talking-points li::before {
+          content: "\2022";
+          position: absolute;
+          left: 0;
+          color: var(--accent, #3b82f6);
+          font-weight: bold;
+        }
+
+        .prd-timeline {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .prd-timeline-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 0;
+          border-bottom: 1px solid var(--border, #27272a)40;
+          font-size: 13px;
+        }
+
+        .prd-timeline-item:last-child {
+          border-bottom: none;
+        }
+
+        .prd-timeline-date {
+          font-size: 12px;
+          color: var(--text-muted, #71717a);
+          min-width: 80px;
+          flex-shrink: 0;
+        }
+
+        .prd-timeline-badge {
+          display: inline-block;
+          padding: 1px 6px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 500;
+          text-transform: lowercase;
+          background: var(--bg-primary, #1e1e2e);
+          color: var(--text-muted, #71717a);
+          flex-shrink: 0;
+        }
+
+        .prd-timeline-summary {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-primary, #e4e4e7);
+        }
+
+        @keyframes prd-spin-anim {
+          to { transform: rotate(360deg); }
+        }
+
+        .prd-spin {
+          animation: prd-spin-anim 1s linear infinite;
+        }
       `}</style>
 
       {/* Header */}
@@ -640,6 +810,113 @@ export function PersonDetail({ personId }: { personId: string }) {
           <p className="prd-empty-section">No shared projects</p>
         )}
       </div>
+
+      {/* ---- Person Intelligence (Phase 3) ---- */}
+
+      {intelLoading && (
+        <div className="prd-section" style={{ textAlign: "center", padding: 24 }}>
+          <Loader size={18} className="prd-spin" style={{ color: "var(--text-muted)" }} />
+          <span style={{ marginLeft: 8, color: "var(--text-muted)", fontSize: 13 }}>Loading intelligence...</span>
+        </div>
+      )}
+
+      {intelligence && (
+        <>
+          {/* Relationship Strength */}
+          <div className="prd-section">
+            <h3 className="prd-section-title">
+              <Target size={14} /> Relationship Strength
+            </h3>
+            <div className="prd-strength-bar">
+              <div
+                className="prd-strength-fill"
+                style={{
+                  width: `${Math.round(intelligence.relationship_strength * 100)}%`,
+                  background: intelligence.relationship_strength > 0.6
+                    ? "#10b981"
+                    : intelligence.relationship_strength > 0.3
+                    ? "#f59e0b"
+                    : "#ef4444",
+                }}
+              />
+            </div>
+            <span className="prd-strength-label">
+              {Math.round(intelligence.relationship_strength * 100)}% —{" "}
+              {intelligence.relationship_strength > 0.6
+                ? "Strong"
+                : intelligence.relationship_strength > 0.3
+                ? "Moderate"
+                : "Fading"}
+            </span>
+          </div>
+
+          {/* Shared Topics */}
+          {intelligence.shared_topics.length > 0 && (
+            <div className="prd-section">
+              <h3 className="prd-section-title">
+                <MessageSquare size={14} /> Shared Topics
+              </h3>
+              <div className="prd-topics">
+                {intelligence.shared_topics.map((t) => (
+                  <span key={t} className="prd-topic-tag">{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Open Commitments */}
+          {intelligence.open_commitments.length > 0 && (
+            <div className="prd-section">
+              <h3 className="prd-section-title">
+                <AlertCircle size={14} /> Open Commitments ({intelligence.open_commitments.length})
+              </h3>
+              <ul className="prd-list">
+                {intelligence.open_commitments.map((c, i) => (
+                  <li key={i} className="prd-list-item">
+                    <AlertCircle size={14} style={{ color: c.status === "overdue" ? "#ef4444" : "#f59e0b", flexShrink: 0 }} />
+                    <span className="prd-list-item-title">{c.description}</span>
+                    {c.due_date && (
+                      <span className="prd-list-item-sub">{c.due_date}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Suggested Talking Points */}
+          {intelligence.suggested_talking_points.length > 0 && (
+            <div className="prd-section">
+              <h3 className="prd-section-title">
+                <TrendingUp size={14} /> Talking Points
+              </h3>
+              <ul className="prd-talking-points">
+                {intelligence.suggested_talking_points.map((point, i) => (
+                  <li key={i}>{point}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Interaction Timeline */}
+          {intelligence.interaction_timeline.length > 0 && (
+            <div className="prd-section">
+              <h3 className="prd-section-title">
+                <Clock size={14} /> Interaction Timeline
+              </h3>
+              <ul className="prd-timeline">
+                {intelligence.interaction_timeline.map((item, i) => (
+                  <li key={i} className="prd-timeline-item">
+                    <span className="prd-timeline-date">{item.date}</span>
+                    <span className="prd-timeline-badge">{item.source}</span>
+                    <span className="prd-timeline-summary">{item.summary}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Einstein",
+    "slug": "einstein-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "scheme": "einstein",
+    "splash": {
+      "backgroundColor": "#0a0a0f"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.einstein.mobile",
+      "infoPlist": {
+        "NSContactsUsageDescription": "Einstein uses contacts to identify people in your context.",
+        "NSCalendarsUsageDescription": "Einstein reads your calendar to prepare context for upcoming events."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a0f"
+      },
+      "package": "com.einstein.mobile",
+      "permissions": [
+        "READ_CONTACTS",
+        "READ_CALENDAR",
+        "READ_CALL_LOG",
+        "RECEIVE_BOOT_COMPLETED",
+        "FOREGROUND_SERVICE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-contacts",
+      "expo-calendar",
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-background-fetch",
+      "expo-task-manager"
+    ]
+  }
+}
