@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 from src.infrastructure.repositories.context_event_repository import ContextEventRepository
 from src.infrastructure.middleware.authentication_middleware import AuthenticationMiddleware
 from src.infrastructure.llm.llm_service import LLMService
-from src.infrastructure.services.embedding_service import OpenAIEmbeddingService
 from src.domain.entities.user import User
 
 import json

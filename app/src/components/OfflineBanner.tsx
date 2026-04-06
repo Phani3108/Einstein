@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const CLOUD_API = "http://localhost:8000";
+const CLOUD_API = localStorage.getItem("einstein_server_url") || "http://localhost:8000";
 const POLL_INTERVAL = 30_000;
 
 const styles = {

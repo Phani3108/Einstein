@@ -19,8 +19,6 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as Crypto from "expo-crypto";
-
 import { useStore } from "../src/store/useStore";
 import { extractTier0 } from "../src/services/tier0";
 import { offlineDb } from "../src/db/offline";

@@ -61,10 +61,13 @@ export class ApiError extends Error {
 export async function ingestEvents(
   events: Omit<ContextEvent, "synced">[]
 ): Promise<{ ingested: number }> {
-  return request("/api/v1/context/events/batch", {
-    method: "POST",
-    body: JSON.stringify({ events }),
-  });
+  for (const event of events) {
+    await request("/api/v1/context/ingest", {
+      method: "POST",
+      body: JSON.stringify(event),
+    });
+  }
+  return { ingested: events.length };
 }
 
 export async function getEvents(params?: {

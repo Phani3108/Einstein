@@ -108,12 +108,16 @@ class TagCount(BaseModel):
 class GraphNode(BaseModel):
     id: str
     title: str
-    file_path: str
+    label: str = ""
+    node_type: str = "note"
+    file_path: str = ""
 
 
 class GraphEdge(BaseModel):
     source: str
     target: str
+    label: str = "link"
+    edge_type: str = "wikilink"
 
 
 class GraphOut(BaseModel):
@@ -387,8 +391,8 @@ def create_vault_router(
     """Create the vault API router.
 
     Args:
-        vault_repo: Not used directly — we go straight to the DB models
-                    via context_repo._database for vault-specific tables.
+        vault_repo: VaultRepository — provides the database connection for
+                    vault-specific tables (notes, decisions, etc.).
         context_repo: For people and projects (existing context engine tables).
         auth_middleware: JWT authentication middleware.
 
@@ -396,7 +400,7 @@ def create_vault_router(
         Configured APIRouter for vault endpoints.
     """
     router = APIRouter(prefix="/api/v1/vault", tags=["vault"])
-    db = context_repo._database
+    db = vault_repo._database
 
     # ------------------------------------------------------------------
     # NOTES
@@ -869,7 +873,7 @@ def create_vault_router(
             for n in notes:
                 nid = str(n.id)
                 path_to_id[n.file_path] = nid
-                nodes.append(GraphNode(id=nid, title=n.title, file_path=n.file_path))
+                nodes.append(GraphNode(id=nid, title=n.title, label=n.title, node_type="note", file_path=n.file_path))
 
             edges: List[GraphEdge] = []
             for n in notes:
@@ -877,7 +881,7 @@ def create_vault_router(
                 for link in (n.outgoing_links or []):
                     target_id = path_to_id.get(link)
                     if target_id:
-                        edges.append(GraphEdge(source=source_id, target=target_id))
+                        edges.append(GraphEdge(source=source_id, target=target_id, label="link", edge_type="wikilink"))
 
             return GraphOut(nodes=nodes, edges=edges)
 
@@ -1075,11 +1079,13 @@ def create_vault_router(
 
     @router.get("/projects", response_model=List[ProjectOut])
     async def get_projects(
-        statusFilter: Optional[str] = None,
+        status: Optional[str] = Query(None),
+        statusFilter: Optional[str] = Query(None),
         user: User = Depends(auth_middleware.require_authentication),
     ):
-        """List projects."""
-        projects = await context_repo.get_projects(user.id, status=statusFilter)
+        """List projects, filterable by status."""
+        effective_status = status or statusFilter
+        projects = await context_repo.get_projects(user.id, status=effective_status)
         return [_project_out(p) for p in projects]
 
     @router.get("/projects/{project_id}", response_model=ProjectOut)
@@ -1300,15 +1306,18 @@ def create_vault_router(
 
     @router.get("/decisions", response_model=List[DecisionOut])
     async def list_decisions(
+        status: Optional[str] = Query(None),
         user: User = Depends(auth_middleware.require_authentication),
     ):
-        """List all decisions."""
+        """List all decisions, optionally filtered by status."""
         async with db.session() as session:
             stmt = (
                 select(VaultDecisionModel)
                 .where(VaultDecisionModel.user_id == user.id)
-                .order_by(desc(VaultDecisionModel.created_at))
             )
+            if status:
+                stmt = stmt.where(VaultDecisionModel.status == status)
+            stmt = stmt.order_by(desc(VaultDecisionModel.created_at))
             result = await session.execute(stmt)
             return [_decision_out(d) for d in result.scalars().all()]
 

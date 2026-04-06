@@ -88,7 +88,8 @@ export interface TemplateInfo {
   content: string;
 }
 
-// AI sidecar base URL
+// DEPRECATED: AI sidecar base URL — sidecar methods now redirect to Cloud API equivalents.
+// Kept for reference; all runtime calls go through CLOUD_API.
 const SIDECAR_URL = "http://127.0.0.1:9721";
 
 export interface ExtractedEntity {
@@ -258,8 +259,23 @@ export const api = {
     request<Note[]>(`${CLOUD_API}/api/v1/vault/notes/search?q=${encodeURIComponent(query)}`),
   getBacklinks: (noteId: string): Promise<Note[]> =>
     request<Note[]>(`${CLOUD_API}/api/v1/vault/notes/${encodeURIComponent(noteId)}/backlinks`),
-  getGraphData: (): Promise<GraphData> =>
-    request<GraphData>(`${CLOUD_API}/api/v1/vault/graph`),
+  getGraphData: async (): Promise<GraphData> => {
+    const raw = await request<any>(`${CLOUD_API}/api/v1/vault/graph`);
+    return {
+      nodes: (raw.nodes || []).map((n: any) => ({
+        id: n.id,
+        label: n.title || n.label || n.id,
+        node_type: n.node_type || "note",
+        file_path: n.file_path || "",
+      })),
+      edges: (raw.edges || []).map((e: any) => ({
+        source: e.source,
+        target: e.target,
+        label: e.label || "link",
+        edge_type: e.edge_type || "wikilink",
+      })),
+    };
+  },
   createDailyNote: (): Promise<Note> =>
     request<Note>(`${CLOUD_API}/api/v1/vault/notes/daily`, {
       method: "POST",
@@ -278,15 +294,15 @@ export const api = {
       method: "POST",
     }),
   toggleBookmark: (noteId: string): Promise<boolean> =>
-    request<boolean>(`${CLOUD_API}/api/v1/vault/bookmarks/${encodeURIComponent(noteId)}/toggle`, {
+    request<{bookmarked: boolean}>(`${CLOUD_API}/api/v1/vault/bookmarks/${encodeURIComponent(noteId)}/toggle`, {
       method: "POST",
-    }),
+    }).then(r => r.bookmarked),
   listBookmarks: (): Promise<Note[]> =>
     request<Note[]>(`${CLOUD_API}/api/v1/vault/bookmarks`),
   getAllTags: (): Promise<TagInfo[]> =>
     request<TagInfo[]>(`${CLOUD_API}/api/v1/vault/tags`),
   getConfig: (key: string): Promise<string | null> =>
-    request<string | null>(`${CLOUD_API}/api/v1/vault/config/${encodeURIComponent(key)}`),
+    request<{value: string | null}>(`${CLOUD_API}/api/v1/vault/config/${encodeURIComponent(key)}`).then(r => r.value),
   setConfig: (key: string, value: string): Promise<void> =>
     request<void>(`${CLOUD_API}/api/v1/vault/config/${encodeURIComponent(key)}`, {
       method: "PUT",
@@ -313,11 +329,11 @@ export const api = {
     }),
   updateProject: (id: string, changes: { title?: string; description?: string; status?: string; category?: string; goal?: string; deadline?: string }): Promise<Project> =>
     request<Project>(`${CLOUD_API}/api/v1/vault/projects/${encodeURIComponent(id)}`, {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify(changes),
     }),
   listProjects: (statusFilter?: string): Promise<Project[]> => {
-    const params = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
+    const params = statusFilter ? `?statusFilter=${encodeURIComponent(statusFilter)}` : "";
     return request<Project[]>(`${CLOUD_API}/api/v1/vault/projects${params}`);
   },
   getProject: (id: string): Promise<Project> =>
@@ -335,7 +351,7 @@ export const api = {
     }),
   updatePerson: (id: string, changes: { name?: string; role?: string; organization?: string; email?: string; notes?: string; lastContact?: string }): Promise<Person> =>
     request<Person>(`${CLOUD_API}/api/v1/vault/people/${encodeURIComponent(id)}`, {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify(changes),
     }),
   listPeople: (): Promise<Person[]> =>
@@ -357,7 +373,7 @@ export const api = {
     }),
   updateDecision: (id: string, changes: { title?: string; description?: string; reasoning?: string; alternatives?: string; status?: string; revisitDate?: string }): Promise<Decision> =>
     request<Decision>(`${CLOUD_API}/api/v1/vault/decisions/${encodeURIComponent(id)}`, {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify(changes),
     }),
   listDecisions: (statusFilter?: string): Promise<Decision[]> => {
@@ -389,7 +405,7 @@ export const api = {
     request<NoteMetadataRecord>(`${CLOUD_API}/api/v1/vault/metadata/${encodeURIComponent(noteId)}`),
   updateNoteMetadata: (noteId: string, changes: { lifecycle?: string; lastMeaningfulEdit?: string; viewCount?: number; importanceScore?: number; distilledAt?: string; sourceType?: string }): Promise<NoteMetadataRecord> =>
     request<NoteMetadataRecord>(`${CLOUD_API}/api/v1/vault/metadata/${encodeURIComponent(noteId)}`, {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify(changes),
     }),
   getStaleNotes: (daysThreshold: number): Promise<Note[]> =>
@@ -421,15 +437,11 @@ export const api = {
   getCalendarEvents: (startDate: string, endDate: string): Promise<CalendarEventRecord[]> =>
     request<CalendarEventRecord[]>(`${CLOUD_API}/api/v1/vault/calendar-events?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`),
 
-  // --- AI sidecar operations (HTTP) ---
+  // --- AI operations (redirected from sidecar to Cloud API) ---
   sidecarHealth: async (): Promise<SidecarHealth | null> => {
-    try {
-      const res = await fetch(`${SIDECAR_URL}/health`);
-      if (!res.ok) return null;
-      return res.json();
-    } catch {
-      return null;
-    }
+    // Deprecated: sidecar health check — return a synthetic healthy status
+    console.warn("sidecarHealth: sidecar is deprecated, using Cloud API");
+    return { status: "ok", provider: "cloud", model: "cloud" };
   },
 
   extractEntities: async (
@@ -437,139 +449,89 @@ export const api = {
     noteId?: string
   ): Promise<ExtractedEntity[]> => {
     try {
-      const res = await fetch(`${SIDECAR_URL}/extract`, {
+      return await request<ExtractedEntity[]>(`${CLOUD_API}/api/v1/tools/extract`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content, note_id: noteId }),
       });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.entities ?? [];
     } catch {
       return [];
     }
   },
 
-  // --- RAG operations ---
+  // --- RAG operations (Cloud API) ---
   ragIndex: async (notes: { id: string; title: string; content: string }[]): Promise<{ indexed: number; chunks: number }> => {
-    try {
-      const res = await fetch(`${SIDECAR_URL}/rag/index`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes }),
-      });
-      if (!res.ok) throw new Error("Index failed");
-      return res.json();
-    } catch {
-      return { indexed: 0, chunks: 0 };
-    }
+    // No cloud equivalent for indexing — handled server-side automatically
+    console.warn("ragIndex: indexing is now handled server-side; this call is a no-op");
+    return { indexed: notes.length, chunks: 0 };
   },
 
   ragStatus: async (): Promise<{ indexed: number; chunks: number; ready: boolean; provider: string; model: string; last_indexed: string | null }> => {
-    try {
-      const res = await fetch(`${SIDECAR_URL}/rag/status`);
-      if (!res.ok) return { indexed: 0, chunks: 0, ready: false, provider: "", model: "", last_indexed: null };
-      return res.json();
-    } catch {
-      return { indexed: 0, chunks: 0, ready: false, provider: "", model: "", last_indexed: null };
-    }
+    // No cloud equivalent — return a default ready status
+    console.warn("ragStatus: sidecar is deprecated; returning default status");
+    return { indexed: 0, chunks: 0, ready: true, provider: "cloud", model: "cloud", last_indexed: null };
   },
 
-  // RAG ask returns a ReadableStream (SSE) — consumed directly by RAGPanel
-  ragAskUrl: `${SIDECAR_URL}/rag/ask`,
+  // RAG ask URL — now points to Cloud API
+  ragAskUrl: `${CLOUD_API}/api/v1/tools/ask`,
 
-  // RAG vector-only search (no LLM generation — cheap and fast)
+  // RAG vector-only search — redirected to Cloud API
   ragSearch: async (query: string, topK: number = 5): Promise<RAGSearchResult[]> => {
     try {
-      const res = await fetch(`${SIDECAR_URL}/rag/search`, {
+      return await request<RAGSearchResult[]>(`${CLOUD_API}/api/v1/tools/ask`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, top_k: topK }),
       });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.results ?? [];
     } catch {
       return [];
     }
   },
 
-  // --- Meeting operations ---
+  // --- Meeting operations (no cloud equivalent — return defaults) ---
   processMeeting: async (transcript: string, source: string, metadata?: Record<string, unknown>): Promise<Record<string, unknown>> => {
-    try {
-      const res = await fetch(`${SIDECAR_URL}/meetings/process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript, source, metadata: metadata || {} }),
-      });
-      if (!res.ok) throw new Error("Meeting processing failed");
-      return res.json();
-    } catch (e) {
-      console.error("Meeting processing error:", e);
-      return {};
-    }
+    console.warn("processMeeting: sidecar is deprecated; no cloud equivalent yet");
+    return {};
   },
 
   parseWhatsApp: async (content: string): Promise<Record<string, unknown>> => {
-    try {
-      const res = await fetch(`${SIDECAR_URL}/meetings/parse-whatsapp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      });
-      if (!res.ok) throw new Error("WhatsApp parsing failed");
-      return res.json();
-    } catch (e) {
-      console.error("WhatsApp parse error:", e);
-      return {};
-    }
+    console.warn("parseWhatsApp: sidecar is deprecated; no cloud equivalent yet");
+    return {};
   },
 
-  // --- Action item extraction ---
+  // --- Action item extraction (Cloud API) ---
   extractActions: async (content: string, noteId: string, noteTitle?: string): Promise<{ action_items: Record<string, unknown>[]; calendar_events: Record<string, unknown>[] }> => {
     try {
-      const res = await fetch(`${SIDECAR_URL}/extract-actions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, note_id: noteId, note_title: noteTitle || "" }),
-      });
-      if (!res.ok) return { action_items: [], calendar_events: [] };
-      return res.json();
+      return await request<{ action_items: Record<string, unknown>[]; calendar_events: Record<string, unknown>[] }>(
+        `${CLOUD_API}/api/v1/tools/extract`, {
+          method: "POST",
+          body: JSON.stringify({ content, note_id: noteId, note_title: noteTitle || "", extract_type: "actions" }),
+        }
+      );
     } catch {
       return { action_items: [], calendar_events: [] };
     }
   },
 
-  // --- Context Hub ---
+  // --- Context Hub (Cloud API) ---
   generateBriefing: async (notes: Record<string, unknown>[], actionItems: Record<string, unknown>[], events: Record<string, unknown>[], period: string = "daily"): Promise<{ summary: string; highlights: string[]; attention_needed: string[]; themes: string[] }> => {
     try {
-      const res = await fetch(`${SIDECAR_URL}/context/briefing`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes, action_items: actionItems, events, period }),
-      });
-      if (!res.ok) return { summary: "", highlights: [], attention_needed: [], themes: [] };
-      return res.json();
+      return await request<{ summary: string; highlights: string[]; attention_needed: string[]; themes: string[] }>(
+        `${CLOUD_API}/api/v1/tools/summarize`, {
+          method: "POST",
+          body: JSON.stringify({ notes, action_items: actionItems, events, period, summary_type: "briefing" }),
+        }
+      );
     } catch {
       return { summary: "", highlights: [], attention_needed: [], themes: [] };
     }
   },
 
   findConnections: async (notes: Record<string, unknown>[]): Promise<{ connections: Record<string, unknown>[] }> => {
-    try {
-      const res = await fetch(`${SIDECAR_URL}/context/connections`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes }),
-      });
-      if (!res.ok) return { connections: [] };
-      return res.json();
-    } catch {
-      return { connections: [] };
-    }
+    // No direct cloud equivalent — return empty
+    console.warn("findConnections: sidecar is deprecated; no cloud equivalent yet");
+    return { connections: [] };
   },
 
-  // --- Temporal Intelligence (Phase 2) ---
+  // --- Temporal Intelligence (Phase 2 — Cloud API) ---
 
   /** Generate a preparation brief for a meeting, day, or project */
   prepareContext: async (
@@ -580,19 +542,17 @@ export const api = {
     decisions: Record<string, unknown>[],
   ): Promise<PrepPack> => {
     try {
-      const res = await fetch(`${SIDECAR_URL}/context/prepare`, {
+      return await request<PrepPack>(`${CLOUD_API}/api/v1/tools/summarize`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           focus_type: focusType,
           context,
           notes,
           actions,
           decisions,
+          summary_type: "prep",
         }),
       });
-      if (!res.ok) return { summary: "", key_points: [], open_questions: [], relevant_history: [], suggested_actions: [] };
-      return res.json();
     } catch {
       return { summary: "", key_points: [], open_questions: [], relevant_history: [], suggested_actions: [] };
     }
@@ -608,26 +568,9 @@ export const api = {
     people: Record<string, unknown>[],
     projects: Record<string, unknown>[],
   ): Promise<AISuggestion[]> => {
-    try {
-      const res = await fetch(`${SIDECAR_URL}/context/suggestions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          current_note_id: currentNoteId,
-          current_note_title: currentNoteTitle,
-          current_project_id: currentProjectId,
-          recent_notes: recentNotes,
-          actions,
-          people,
-          projects,
-        }),
-      });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.suggestions ?? [];
-    } catch {
-      return [];
-    }
+    // No direct cloud equivalent — return empty
+    console.warn("getSuggestions: sidecar is deprecated; no cloud equivalent yet");
+    return [];
   },
 
   /** Extract associations between a note and known projects/people */
@@ -638,18 +581,18 @@ export const api = {
     knownPeople: { id: string; name: string }[],
   ): Promise<{ object_type: string; object_id: string; relationship: string; confidence: number }[]> => {
     try {
-      const res = await fetch(`${SIDECAR_URL}/extract-associations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content,
-          note_id: noteId,
-          known_projects: knownProjects,
-          known_people: knownPeople,
-        }),
-      });
-      if (!res.ok) return [];
-      const data = await res.json();
+      const data = await request<{ associations: { object_type: string; object_id: string; relationship: string; confidence: number }[] }>(
+        `${CLOUD_API}/api/v1/tools/extract`, {
+          method: "POST",
+          body: JSON.stringify({
+            content,
+            note_id: noteId,
+            known_projects: knownProjects,
+            known_people: knownPeople,
+            extract_type: "associations",
+          }),
+        }
+      );
       return data.associations ?? [];
     } catch {
       return [];

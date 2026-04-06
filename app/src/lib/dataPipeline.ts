@@ -6,7 +6,7 @@
  * and "Save as Note" action flows through this pipeline.
  *
  * Pipeline stages:
- *   1. Save note to vault (Tauri IPC)
+ *   1. Save note to vault (Cloud API)
  *   2. Entity extraction (sidecar /extract)
  *   3. Action item + calendar event extraction (sidecar /extract-actions)
  *   4. Persist action items to DB (api.saveActionItems)

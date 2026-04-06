@@ -41,10 +41,19 @@ export default function HomeScreen() {
   async function loadData() {
     setLoading(true);
     try {
-      const briefingData = await api.getMorningBriefing();
-      setBriefing(briefingData);
-    } catch {
-      // Offline — use cached
+      const store = useStore;
+      const [briefingData, peopleData, eventsData] = await Promise.allSettled([
+        api.getMorningBriefing(),
+        api.getPeople(),
+        api.getEvents(),
+      ]);
+      if (briefingData.status === "fulfilled") setBriefing(briefingData.value);
+      if (peopleData.status === "fulfilled") store.getState().setPeople(peopleData.value);
+      if (eventsData.status === "fulfilled") {
+        eventsData.value.slice(0, 20).forEach((e) => store.getState().addEvent(e));
+      }
+    } catch (err) {
+      console.warn(err);
     }
     setLoading(false);
   }

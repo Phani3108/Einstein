@@ -1,6 +1,5 @@
 import { useReducer, useEffect, useCallback, useState } from "react";
 import { AppContext, appReducer, initialState } from "./lib/store";
-import type { SidebarView } from "./lib/store";
 import { initLanguage } from "./lib/i18n";
 import { api } from "./lib/api";
 import { processNoteThroughPipeline, loadCentralState } from "./lib/dataPipeline";
@@ -29,31 +28,11 @@ import { InsightsDashboard } from "./components/InsightsDashboard";
 import { RAGPanel } from "./components/RAGPanel";
 import { MeetingsPanel } from "./components/MeetingsPanel";
 import { ActionItemsDashboard } from "./components/ActionItemsDashboard";
-import { ContextHub } from "./components/ContextHub";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { NoteNameModal } from "./components/NoteNameModal";
 import { FloatingVoiceButton } from "./components/VoiceInput";
 import { syncManager } from "./lib/sync";
-import {
-  PenTool, Columns3, Download, Link2, Puzzle,
-  Lightbulb,
-  MessageSquare, Video, CheckSquare, LayoutDashboard,
-} from "lucide-react";
 import "./styles/global.css";
-
-/* Secondary views shown as tabs in the top toolbar of the center panel */
-const SECONDARY_TABS: { view: SidebarView; label: string; icon: React.ReactNode }[] = [
-  { view: "contexthub", label: "Hub", icon: <LayoutDashboard size={13} /> },
-  { view: "rag", label: "Ask Notes", icon: <MessageSquare size={13} /> },
-  { view: "meetings", label: "Meetings", icon: <Video size={13} /> },
-  { view: "actions", label: "Actions", icon: <CheckSquare size={13} /> },
-  { view: "canvas", label: "Canvas", icon: <PenTool size={13} /> },
-  { view: "kanban", label: "Kanban", icon: <Columns3 size={13} /> },
-  { view: "backlinks", label: "Backlinks", icon: <Link2 size={13} /> },
-  { view: "insights", label: "Insights", icon: <Lightbulb size={13} /> },
-  { view: "export", label: "Export", icon: <Download size={13} /> },
-  { view: "plugins", label: "Plugins", icon: <Puzzle size={13} /> },
-];
 
 // Initialize i18n before render
 initLanguage();
@@ -232,9 +211,7 @@ function App() {
     state.sidebarView === "files" || contextModeActive
   );
   const showLegacyRightPanel = state.rightPanelOpen && !showContextPanel && ["backlinks", "search", "bookmarks"].includes(state.sidebarView);
-  // Always show secondary tabs unless on full-page views or contextMode detail views
-  const fullPageViews = ["settings"];
-  const showSecondaryTabs = !fullPageViews.includes(state.sidebarView) && !contextModeActive;
+  // Secondary tabs removed — navigation handled via Sidebar and ContextMode
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
@@ -243,24 +220,6 @@ function App() {
       <div className="app-layout">
         <Sidebar />
         <div className="center-panel">
-          {showSecondaryTabs && (
-            <div className="secondary-tabs">
-              {SECONDARY_TABS.map((tab) => (
-                <button
-                  key={tab.view}
-                  className={`secondary-tab ${state.sidebarView === tab.view ? "active" : ""}`}
-                  onClick={() => dispatch({
-                    type: "SET_SIDEBAR_VIEW",
-                    view: state.sidebarView === tab.view ? "files" : tab.view,
-                  })}
-                  title={tab.label}
-                >
-                  {tab.icon}
-                  <span>{tab.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
           {renderMainContent()}
         </div>
         {showContextPanel && <ErrorBoundary name="ContextPanel"><ContextPanel /></ErrorBoundary>}

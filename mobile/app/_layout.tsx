@@ -1,9 +1,11 @@
 /**
  * Root layout — tab navigator with 5 screens.
  */
+import { useEffect } from "react";
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import { registerBackgroundSync } from "../src/services/sync";
 
 type TabIcon = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -16,6 +18,10 @@ const TAB_CONFIG: { name: string; title: string; icon: TabIcon; iconFocused: Tab
 ];
 
 export default function RootLayout() {
+  useEffect(() => {
+    registerBackgroundSync().catch(console.warn);
+  }, []);
+
   return (
     <>
       <StatusBar style="light" />

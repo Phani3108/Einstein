@@ -29,7 +29,10 @@
     "react-native-screens": "~4.4.0",
     "zustand": "^5.0.0",
     "date-fns": "^4.1.0",
-    "@expo/vector-icons": "^14.0.0"
+    "@expo/vector-icons": "^14.0.0",
+    "@react-native-community/netinfo": "^11.4.1",
+    "expo-crypto": "~14.0.1",
+    "@react-native-async-storage/async-storage": "^2.1.0"
   },
   "devDependencies": {
     "@types/react": "~18.3.0",

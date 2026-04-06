@@ -2,6 +2,8 @@
  * Zustand store — single source of truth for the mobile app.
  */
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type {
   ContextEvent,
   Person,
@@ -57,7 +59,9 @@ interface AppState {
   recentEvents: (limit?: number) => ContextEvent[];
 }
 
-export const useStore = create<AppState>((set, get) => ({
+export const useStore = create<AppState>()(
+  persist(
+    (set, get) => ({
   // Initial state
   events: [],
   people: [],
@@ -75,10 +79,14 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Events
   addEvent: (event) =>
-    set((s) => ({
-      events: [event, ...s.events],
-      sync: { ...s.sync, pendingCount: s.sync.pendingCount + 1 },
-    })),
+    set((s) => {
+      // Deduplicate by ID
+      if (s.events.some((e) => e.id === event.id)) return s;
+      return {
+        events: [event, ...s.events],
+        sync: { ...s.sync, pendingCount: s.sync.pendingCount + 1 },
+      };
+    }),
 
   addEvents: (events) =>
     set((s) => ({
@@ -138,4 +146,18 @@ export const useStore = create<AppState>((set, get) => ({
     [...get().events]
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
       .slice(0, limit),
-}));
+    }),
+    {
+      name: "einstein-app-storage",
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        serverUrl: state.serverUrl,
+        authToken: state.authToken,
+        events: state.events.slice(0, 100),
+        people: state.people,
+        projects: state.projects,
+        commitments: state.commitments,
+      }),
+    },
+  ),
+);
