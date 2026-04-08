@@ -401,11 +401,16 @@ def create_app() -> FastAPI:
                 title="Personal Semantic Engine API",
             )
 
-    @app.get("/", include_in_schema=False)
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def root():
-        """Redirect root to API docs."""
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/api/v1/docs")
+        """Serve the landing page."""
+        landing_path = os.path.join(os.path.dirname(__file__), "templates", "landing.html")
+        try:
+            with open(landing_path, "r", encoding="utf-8") as f:
+                return HTMLResponse(content=f.read())
+        except FileNotFoundError:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url="/api/v1/docs")
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():

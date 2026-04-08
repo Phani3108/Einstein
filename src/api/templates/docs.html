@@ -3,205 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personal Semantic Engine API Documentation</title>
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css" />
+    <title>Einstein API — Interactive Documentation</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.18.2/swagger-ui.css" />
     <style>
-        html {
-            box-sizing: border-box;
-            overflow: -moz-scrollbars-vertical;
-            overflow-y: scroll;
-        }
-        *, *:before, *:after {
-            box-sizing: inherit;
-        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            margin:0;
-            background: #fafafa;
-            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
         }
-        .swagger-ui .topbar {
-            background-color: #2c3e50;
+        .docs-header {
+            background: linear-gradient(135deg, #0f1117 0%, #1a1e2e 100%);
+            border-bottom: 1px solid rgba(255,255,255,.06);
+            padding: 24px 32px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
         }
-        .swagger-ui .topbar .download-url-wrapper {
-            display: none;
+        .docs-header .logo {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 18px; color: #fff;
         }
-        .swagger-ui .info {
-            margin: 50px 0;
+        .docs-header h1 {
+            font-size: 18px; font-weight: 600; color: #f0f0f0; letter-spacing: -.3px;
         }
-        .swagger-ui .info .title {
-            color: #2c3e50;
+        .docs-header .badge {
+            font-size: 11px; font-weight: 500; padding: 3px 8px;
+            background: rgba(99,102,241,.15); color: #818cf8;
+            border-radius: 6px; border: 1px solid rgba(99,102,241,.25);
         }
+        .docs-header .home-link {
+            margin-left: auto; font-size: 13px; color: #9ca3af;
+            text-decoration: none; transition: color .15s;
+        }
+        .docs-header .home-link:hover { color: #e1e4e8; }
+
+        /* Swagger UI dark theme overrides */
+        .swagger-ui { background: #0f1117 !important; }
+        .swagger-ui .wrapper { max-width: 1100px; padding: 0 24px; }
+        .swagger-ui .topbar { display: none !important; }
+        .swagger-ui .info { margin: 32px 0 24px; }
+        .swagger-ui .info .title { color: #f0f0f0 !important; font-size: 26px !important; }
+        .swagger-ui .info .description p,
+        .swagger-ui .info .description li { color: #9ca3af !important; }
+        .swagger-ui .info .description h2,
+        .swagger-ui .info .description h3 { color: #e1e4e8 !important; }
+        .swagger-ui .info .description code {
+            background: rgba(99,102,241,.12) !important; color: #a5b4fc !important;
+            padding: 2px 6px; border-radius: 4px;
+        }
+        .swagger-ui .info .description a { color: #818cf8 !important; }
         .swagger-ui .scheme-container {
-            background: #fff;
-            box-shadow: 0 1px 2px 0 rgba(0,0,0,.15);
+            background: #161922 !important; border: 1px solid rgba(255,255,255,.06);
+            border-radius: 8px; box-shadow: none !important; padding: 12px 20px;
         }
-        .custom-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            text-align: center;
-            margin-bottom: 20px;
+        .swagger-ui .opblock-tag { color: #e1e4e8 !important; border-bottom-color: rgba(255,255,255,.06) !important; }
+        .swagger-ui .opblock-tag small { color: #6b7280 !important; }
+        .swagger-ui .opblock { border-radius: 8px !important; border: 1px solid rgba(255,255,255,.06) !important; margin-bottom: 8px; }
+        .swagger-ui .opblock .opblock-summary { border: none !important; }
+        .swagger-ui .opblock .opblock-summary-method { border-radius: 6px !important; font-size: 12px !important; min-width: 70px; }
+        .swagger-ui .opblock .opblock-summary-path { color: #e1e4e8 !important; }
+        .swagger-ui .opblock .opblock-summary-description { color: #9ca3af !important; }
+        .swagger-ui .opblock.opblock-get { background: rgba(16,185,129,.04) !important; border-color: rgba(16,185,129,.15) !important; }
+        .swagger-ui .opblock.opblock-post { background: rgba(99,102,241,.04) !important; border-color: rgba(99,102,241,.15) !important; }
+        .swagger-ui .opblock.opblock-put { background: rgba(245,158,11,.04) !important; border-color: rgba(245,158,11,.15) !important; }
+        .swagger-ui .opblock.opblock-delete { background: rgba(239,68,68,.04) !important; border-color: rgba(239,68,68,.15) !important; }
+        .swagger-ui .opblock-body { background: #161922 !important; }
+        .swagger-ui .opblock-section-header { background: #1a1e2e !important; border: none !important; }
+        .swagger-ui .opblock-section-header h4 { color: #e1e4e8 !important; }
+        .swagger-ui .tab-header .tab-item.active h4 span::after { background: #6366f1 !important; }
+        .swagger-ui table thead tr td, .swagger-ui table thead tr th { color: #9ca3af !important; border-bottom-color: rgba(255,255,255,.06) !important; }
+        .swagger-ui table tbody tr td { color: #e1e4e8 !important; border-bottom-color: rgba(255,255,255,.04) !important; }
+        .swagger-ui .parameter__name { color: #e1e4e8 !important; }
+        .swagger-ui .parameter__type { color: #6b7280 !important; }
+        .swagger-ui .parameter__in { color: #6b7280 !important; }
+        .swagger-ui .model-title { color: #e1e4e8 !important; }
+        .swagger-ui .model { color: #9ca3af !important; }
+        .swagger-ui .model-toggle::after { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Cpath d='M1 3l4 4 4-4' stroke='%239ca3af' fill='none'/%3E%3C/svg%3E") center no-repeat !important; }
+        .swagger-ui .models { border: 1px solid rgba(255,255,255,.06) !important; border-radius: 8px; }
+        .swagger-ui .models h4 span { color: #e1e4e8 !important; }
+        .swagger-ui .model-box { background: #161922 !important; }
+        .swagger-ui .prop-type { color: #818cf8 !important; }
+        .swagger-ui .prop-format { color: #6b7280 !important; }
+        .swagger-ui input[type=text], .swagger-ui textarea, .swagger-ui select {
+            background: #1a1e2e !important; color: #e1e4e8 !important;
+            border-color: rgba(255,255,255,.1) !important; border-radius: 6px !important;
         }
-        .custom-header h1 {
-            margin: 0;
-            font-size: 2.5em;
-            font-weight: 300;
+        .swagger-ui .btn { border-radius: 6px !important; }
+        .swagger-ui .btn.authorize { color: #10b981 !important; border-color: #10b981 !important; }
+        .swagger-ui .btn.execute { background: #6366f1 !important; border-color: #6366f1 !important; color: #fff !important; }
+        .swagger-ui .responses-inner { background: #161922 !important; }
+        .swagger-ui .response-col_status { color: #e1e4e8 !important; }
+        .swagger-ui .response-col_description { color: #9ca3af !important; }
+        .swagger-ui .highlight-code { background: #0d1117 !important; border-radius: 6px; }
+        .swagger-ui .microlight { background: #0d1117 !important; color: #e1e4e8 !important; }
+        .swagger-ui .copy-to-clipboard { background: #1a1e2e !important; border: none !important; }
+        .swagger-ui .loading-container { padding: 40px; }
+        .swagger-ui .loading-container .loading::after { color: #6b7280 !important; }
+        .swagger-ui .renderedMarkdown p { color: #9ca3af !important; }
+        .swagger-ui .authorization__btn { fill: #10b981 !important; }
+        .swagger-ui .expand-operation svg { fill: #6b7280 !important; }
+        .swagger-ui .filter .operation-filter-input {
+            background: #1a1e2e !important; color: #e1e4e8 !important;
+            border: 1px solid rgba(255,255,255,.1) !important; border-radius: 8px !important;
         }
-        .custom-header p {
-            margin: 10px 0 0 0;
-            font-size: 1.2em;
-            opacity: 0.9;
-        }
-        .api-info {
-            background: white;
-            padding: 20px;
-            margin: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .api-info h3 {
-            color: #2c3e50;
-            margin-top: 0;
-        }
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin: 20px;
-        }
-        .feature-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .feature-card h4 {
-            color: #667eea;
-            margin-top: 0;
-        }
-        .auth-info {
-            background: #e8f4fd;
-            border: 1px solid #bee5eb;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 20px;
-        }
-        .auth-info h4 {
-            color: #0c5460;
-            margin-top: 0;
-        }
-        .version-info {
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 20px;
-        }
-        .version-info h4 {
-            color: #155724;
-            margin-top: 0;
-        }
+        .swagger-ui .dialog-ux .modal-ux { background: #1a1e2e !important; border: 1px solid rgba(255,255,255,.1); }
+        .swagger-ui .dialog-ux .modal-ux-header h3 { color: #e1e4e8 !important; }
+        .swagger-ui .dialog-ux .modal-ux-content p { color: #9ca3af !important; }
+        .swagger-ui .errors-wrapper { background: rgba(239,68,68,.08) !important; border: 1px solid rgba(239,68,68,.2) !important; border-radius: 8px; }
+        .swagger-ui .errors-wrapper h4 { color: #f87171 !important; }
     </style>
 </head>
 <body>
-    <div class="custom-header">
-        <h1>Personal Semantic Engine API</h1>
-        <p>Transform your thoughts into searchable, semantic knowledge</p>
-    </div>
-
-    <div class="api-info">
-        <h3>🚀 Getting Started</h3>
-        <p>The Personal Semantic Engine (Faraday) API enables you to create a unified, searchable repository of personal data with intelligent semantic understanding. This interactive documentation allows you to explore and test all available endpoints.</p>
-    </div>
-
-    <div class="auth-info">
-        <h4>🔐 Authentication Required</h4>
-        <p>Most endpoints require JWT authentication. Include your token in the Authorization header:</p>
-        <code>Authorization: Bearer &lt;your-jwt-token&gt;</code>
-        <p>Use the "Authorize" button below to set your token for testing.</p>
-    </div>
-
-    <div class="version-info">
-        <h4>📋 API Version: v1.0.0</h4>
-        <p>This is the initial stable release. All endpoints are prefixed with <code>/api/v1/</code></p>
-    </div>
-
-    <div class="feature-grid">
-        <div class="feature-card">
-            <h4>💭 Thought Management</h4>
-            <p>Create, read, update, and delete personal thoughts with automatic entity extraction and metadata capture.</p>
-        </div>
-        <div class="feature-card">
-            <h4>🔍 Semantic Search</h4>
-            <p>Perform intelligent searches using natural language queries with hybrid ranking and filtering capabilities.</p>
-        </div>
-        <div class="feature-card">
-            <h4>📅 Timeline Visualization</h4>
-            <p>View your personal data chronologically with entity relationships and intelligent grouping.</p>
-        </div>
-        <div class="feature-card">
-            <h4>⚙️ Admin Management</h4>
-            <p>Administrative endpoints for user management and system health monitoring.</p>
-        </div>
-    </div>
+    <header class="docs-header">
+        <div class="logo">E</div>
+        <h1>Einstein API</h1>
+        <span class="badge">v1</span>
+        <a href="/" class="home-link">&larr; Home</a>
+    </header>
 
     <div id="swagger-ui"></div>
 
-    <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js"></script>
-    <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-standalone-preset.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.18.2/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.18.2/swagger-ui-standalone-preset.js"></script>
     <script>
-        window.onload = function() {
-            const ui = SwaggerUIBundle({
+        window.onload = function () {
+            SwaggerUIBundle({
                 url: '/api/v1/openapi.json',
                 dom_id: '#swagger-ui',
                 deepLinking: true,
-                presets: [
-                    SwaggerUIBundle.presets.apis,
-                    SwaggerUIStandalonePreset
-                ],
-                plugins: [
-                    SwaggerUIBundle.plugins.DownloadUrl
-                ],
+                presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+                plugins: [SwaggerUIBundle.plugins.DownloadUrl],
                 layout: "StandaloneLayout",
                 defaultModelsExpandDepth: 1,
                 defaultModelExpandDepth: 1,
                 docExpansion: "list",
                 filter: true,
-                showExtensions: true,
-                showCommonExtensions: true,
                 tryItOutEnabled: true,
-                requestInterceptor: function(request) {
-                    // Add custom headers or modify requests here
-                    request.headers['X-Client'] = 'SwaggerUI';
-                    return request;
-                },
-                responseInterceptor: function(response) {
-                    // Handle responses here
-                    return response;
-                },
-                onComplete: function() {
-                    console.log('Swagger UI loaded successfully');
-                },
-                validatorUrl: null, // Disable validator
-                supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
-                oauth2RedirectUrl: window.location.origin + '/api/v1/docs/oauth2-redirect'
+                validatorUrl: null,
+                supportedSubmitMethods: ['get','post','put','delete','patch'],
             });
-
-            // Custom styling and behavior
-            setTimeout(function() {
-                // Hide the Swagger UI topbar if desired
-                const topbar = document.querySelector('.swagger-ui .topbar');
-                if (topbar) {
-                    topbar.style.display = 'none';
-                }
-
-                // Add custom CSS classes
-                const wrapper = document.querySelector('.swagger-ui .wrapper');
-                if (wrapper) {
-                    wrapper.style.maxWidth = '1200px';
-                    wrapper.style.margin = '0 auto';
-                }
-            }, 1000);
         };
     </script>
 </body>
