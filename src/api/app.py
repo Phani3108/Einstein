@@ -26,6 +26,7 @@ from src.api.routes.vault import create_vault_router
 from src.api.routes.integrations import create_integrations_router
 from src.api.routes.actions import create_actions_router
 from src.api.routes.intelligence import create_intelligence_router
+from src.api.routes.predictions import create_predictions_router
 from src.infrastructure.connectors.webhook_router import router as webhook_router
 from src.api.error_handlers import (
     domain_exception_handler,
@@ -201,6 +202,10 @@ def create_app() -> FastAPI:
                 "name": "webhooks",
                 "description": "Inbound webhook receiver for third-party provider events",
             },
+            {
+                "name": "predictions",
+                "description": "Time-series forecasting for knowledge graph evolution, activity patterns, entity emergence, and relationship dynamics",
+            },
         ],
         openapi_url="/api/v1/openapi.json",
         docs_url=None,  # We'll create a custom docs endpoint
@@ -325,6 +330,15 @@ def create_app() -> FastAPI:
 
     # Webhook ingestion routes (Phase 1A)
     app.include_router(webhook_router)
+
+    # Prediction routes (TimesFM integration)
+    use_mock_predictions = os.getenv("USE_MOCK_TIMESFM", "true").lower() == "true"
+    predictions_router = create_predictions_router(
+        database=container.db(),
+        auth_middleware=container.auth_middleware(),
+        use_mock=use_mock_predictions,
+    )
+    app.include_router(predictions_router)
 
     # Customize OpenAPI schema
     def custom_openapi():

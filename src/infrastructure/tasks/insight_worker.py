@@ -235,6 +235,14 @@ async def generate_morning_briefing(
             for p in dormant_projects.scalars().all()
         ]
 
+    # Get prediction insights
+    predictions = None
+    try:
+        from src.infrastructure.tasks.prediction_worker import generate_prediction_briefing
+        predictions = await generate_prediction_briefing(database, user_id)
+    except Exception as e:
+        logger.warning(f"Could not generate prediction briefing: {e}")
+
     # Build briefing
     briefing = {
         "date": datetime.now().isoformat()[:10],
@@ -243,6 +251,7 @@ async def generate_morning_briefing(
         "stale_projects": stale_projects,
         "today_event_count": len(today_events),
         "attention_items": [],
+        "predictions": predictions,
     }
 
     # Attention items
@@ -258,6 +267,27 @@ async def generate_morning_briefing(
         briefing["attention_items"].append(
             f"Stale projects: {', '.join(p['title'] for p in stale_projects[:3])}"
         )
+
+    # Add prediction-based attention items
+    if predictions and predictions.get("has_predictions"):
+        if predictions.get("activity_outlook"):
+            outlook = predictions["activity_outlook"]
+            if outlook.get("trend") == "increasing":
+                briefing["attention_items"].append(
+                    f"Busy period ahead: avg {outlook['average_daily']:.1f} items/day expected"
+                )
+        if predictions.get("emerging_topics"):
+            topics = [t["entity"] for t in predictions["emerging_topics"][:2]]
+            if topics:
+                briefing["attention_items"].append(
+                    f"Emerging topics: {', '.join(topics)}"
+                )
+        if predictions.get("relationships_at_risk"):
+            at_risk = predictions["relationships_at_risk"]
+            if at_risk:
+                briefing["attention_items"].append(
+                    f"Reconnect soon: {at_risk[0]['name']} ({at_risk[0]['days_until_dormant']} days left)"
+                )
 
     # Generate LLM summary if there's enough data
     if today_events or overdue or stale_people:
@@ -311,6 +341,14 @@ async def generate_weekly_digest(
     # Active people
     active_people = [p for p in people if p.last_seen and (datetime.now() - p.last_seen).days <= 7]
 
+    # Get prediction outlook for next week
+    predictions = None
+    try:
+        from src.infrastructure.tasks.prediction_worker import generate_prediction_briefing
+        predictions = await generate_prediction_briefing(database, user_id)
+    except Exception as e:
+        logger.warning(f"Could not generate prediction outlook: {e}")
+
     digest = {
         "period": f"{since.isoformat()[:10]} to {datetime.now().isoformat()[:10]}",
         "total_events": len(events),
@@ -319,6 +357,7 @@ async def generate_weekly_digest(
         "new_connections": len([c for c in connections if c.discovered_at >= since]),
         "active_people": [p.name for p in active_people[:10]],
         "people_count": len(active_people),
+        "next_week_outlook": predictions,
     }
 
     # LLM summary
@@ -365,6 +404,7 @@ async def insight_task(ctx: dict) -> dict:
     """arq task entry point for daily insight generation."""
     database = ctx["database"]
     llm_service = ctx["llm_service"]
+    redis_client = ctx.get("redis")
     from src.infrastructure.tasks.tier1_worker import _get_active_user_ids
 
     user_ids = await _get_active_user_ids(database)
@@ -373,9 +413,22 @@ async def insight_task(ctx: dict) -> dict:
         freshness = await update_freshness_scores(database, uid)
         overdue = await check_overdue_commitments(database, uid)
         briefing = await generate_morning_briefing(database, llm_service, uid)
+
+        prediction_stats = None
+        try:
+            from src.infrastructure.tasks.prediction_worker import run_prediction_job
+            prediction_stats = await run_prediction_job(
+                database=database,
+                redis_client=redis_client,
+                user_id=uid,
+            )
+        except Exception as e:
+            logger.warning(f"Prediction job failed for user {uid}: {e}")
+
         results[str(uid)] = {
             "freshness": freshness,
             "overdue_commitments": len(overdue),
             "briefing_generated": bool(briefing),
+            "predictions_generated": prediction_stats is not None,
         }
     return results
