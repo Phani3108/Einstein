@@ -2,14 +2,16 @@
 
 Wraps Google's TimesFM 2.5 foundation model for zero-shot time-series
 forecasting with quantile predictions.
+
+numpy and torch are optional dependencies — imported lazily inside methods
+so the module can be loaded in environments (e.g. Vercel) where only the
+base dependencies are installed.
 """
 
 from dataclasses import dataclass
 from typing import Optional, Sequence
 import logging
 import os
-
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +179,8 @@ class TimesFMService:
         if not inputs:
             raise ValueError("At least one input series is required")
 
+        import numpy as np
+
         horizon = min(horizon, self._config.max_horizon)
 
         np_inputs = [np.array(series, dtype=np.float64) for series in inputs]
@@ -313,12 +317,14 @@ class MockTimesFMService(TimesFMService):
 
         results = []
         for series in inputs:
-            arr = np.array(series)
-            mean = np.mean(arr[-min(7, len(arr)) :])
-            std = max(np.std(arr[-min(7, len(arr)) :]), 0.1)
+            vals = list(series)
+            recent = vals[-min(7, len(vals)):]
+            mean = sum(recent) / len(recent) if recent else 0.0
+            variance = sum((v - mean) ** 2 for v in recent) / len(recent) if recent else 0.0
+            std = max(variance ** 0.5, 0.1)
 
-            if len(arr) >= 2:
-                trend = (arr[-1] - arr[-2]) / 2
+            if len(vals) >= 2:
+                trend = (vals[-1] - vals[-2]) / 2
             else:
                 trend = 0
 
