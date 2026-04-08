@@ -401,6 +401,23 @@ def create_app() -> FastAPI:
                 title="Personal Semantic Engine API",
             )
 
+    @app.get("/", include_in_schema=False)
+    async def root():
+        """Redirect root to API docs."""
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/api/v1/docs")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        """Return a minimal 1x1 transparent favicon to silence browser 404s."""
+        import base64
+        ico = base64.b64decode(
+            "AAABAAEAAQEAAAEAGAAwAAAAFgAAACgAAAABAAAAAgAAAAEAGAAAAAAA"
+            "CAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        )
+        from fastapi.responses import Response
+        return Response(content=ico, media_type="image/x-icon")
+
     # Add API information endpoint
     @app.get("/api/v1/info", include_in_schema=False)
     async def api_info():
