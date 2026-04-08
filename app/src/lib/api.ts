@@ -1,5 +1,10 @@
 // Cloud API configuration
-const CLOUD_API = localStorage.getItem("einstein_server_url") || "http://localhost:8000";
+// On Vercel (same origin), use relative URLs; locally fall back to localhost:8000
+const CLOUD_API =
+  localStorage.getItem("einstein_server_url") ||
+  (typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? ""
+    : "http://localhost:8000");
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("einstein_auth_token");
