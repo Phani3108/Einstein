@@ -360,42 +360,6 @@ def create_app() -> FastAPI:
             "Prediction routes disabled: %s", exc
         )
 
-    # Auto-provision development user on startup so the hardcoded
-    # frontend token always resolves to a valid database row.
-    @app.on_event("startup")
-    async def _ensure_dev_user():
-        from uuid import UUID as _UUID
-        try:
-            user_repo = container.user_repository()
-            auth_svc = container.authentication_service()
-
-            dev_id = _UUID("60bd95e0-1d86-49a0-99c4-1b72773ba450")
-            dev_email = "admin@einstein.app"
-
-            existing = await user_repo.find_by_id(dev_id)
-            if existing:
-                return
-
-            existing_email = await user_repo.find_by_email(dev_email)
-            if existing_email:
-                return
-
-            from src.domain.entities.user import User as DomainUser
-            hashed_pw = await auth_svc.hash_password("einstein-dev-2024")
-            dev_user = DomainUser(
-                id=dev_id,
-                email=dev_email,
-                hashed_password=hashed_pw,
-                is_active=True,
-                is_admin=True,
-            )
-            await user_repo.save(dev_user)
-            import logging
-            logging.getLogger(__name__).info("Dev user auto-provisioned: %s", dev_email)
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning("Dev user provisioning skipped: %s", exc)
-
     # Customize OpenAPI schema
     def custom_openapi():
         if app.openapi_schema:
