@@ -1,5 +1,7 @@
 """Database connection management for the Personal Semantic Engine."""
 
+import os
+import ssl
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -15,10 +17,18 @@ class Database:
         Args:
             connection_string: SQLAlchemy connection string for the database
         """
+        connect_args: dict = {}
+        if os.getenv("DATABASE_URL") and "localhost" not in connection_string:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            connect_args["ssl"] = ctx
+
         self._engine = create_async_engine(
             connection_string,
             echo=False,
             pool_pre_ping=True,
+            connect_args=connect_args,
         )
         self._session_factory = async_sessionmaker(
             self._engine,

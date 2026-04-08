@@ -59,6 +59,13 @@ def create_app() -> FastAPI:
         db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     elif db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    # asyncpg doesn't understand sslmode — strip it and let
+    # connection.py handle SSL via connect_args instead
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    _parsed = urlparse(db_url)
+    _qs = parse_qs(_parsed.query)
+    _qs.pop("sslmode", None)
+    db_url = urlunparse(_parsed._replace(query=urlencode(_qs, doseq=True)))
     container.config.from_dict(
         {
             "db": {
