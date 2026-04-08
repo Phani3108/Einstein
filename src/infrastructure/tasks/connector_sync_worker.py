@@ -23,7 +23,7 @@ async def sync_integrations(database: Database):
         result = await session.execute(
             text("""
                 SELECT id, user_id, provider, access_token, refresh_token,
-                       token_expiry, metadata, last_sync_at, sync_cursor
+                       token_expiry, integration_metadata AS metadata, last_sync_at, sync_cursor
                 FROM integration_credentials
                 WHERE is_active = true
             """)

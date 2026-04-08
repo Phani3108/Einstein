@@ -77,7 +77,7 @@ interface ClientAnalysis {
   todosCount: number;
 }
 
-type DashboardTab = "overview" | "weekly" | "monthly" | "meeting_prep" | "weekly_report" | "followups" | "relationships";
+type DashboardTab = "overview" | "weekly" | "monthly" | "meeting_prep" | "weekly_report" | "followups" | "relationships" | "predictions";
 
 /* ------------------------------------------------------------------ */
 /*  Client-side analysis helpers                                       */
@@ -669,6 +669,208 @@ function ReflectionTab({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Predictions Panel                                                  */
+/* ------------------------------------------------------------------ */
+
+function PredictionsPanel() {
+  const { state, dispatch } = useApp();
+  const [activityForecast, setActivityForecast] = useState<any>(null);
+  const [emergingEntities, setEmergingEntities] = useState<any[]>([]);
+  const [relationshipForecast, setRelationshipForecast] = useState<any[]>([]);
+  const [graphEvolution, setGraphEvolution] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [af, ee, rf, ge] = await Promise.allSettled([
+        api.getActivityForecast(14),
+        api.getEmergingEntities(30),
+        api.getRelationshipForecast(),
+        api.getGraphEvolution(),
+      ]);
+      if (af.status === "fulfilled") setActivityForecast(af.value);
+      if (ee.status === "fulfilled") setEmergingEntities(Array.isArray(ee.value) ? ee.value : []);
+      if (rf.status === "fulfilled") setRelationshipForecast(Array.isArray(rf.value) ? rf.value : []);
+      if (ge.status === "fulfilled") setGraphEvolution(ge.value);
+      setLoaded(true);
+    } catch {
+      // silently continue
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  if (!loaded && !loading) {
+    return (
+      <div className="insights-reflection-empty">
+        <Sparkles size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
+        <h3>Predictive Intelligence</h3>
+        <p>Forecast activity patterns, emerging topics, relationship health, and knowledge graph evolution.</p>
+        <button className="insights-ai-btn" onClick={load}>
+          <Sparkles size={14} />
+          Load Predictions
+        </button>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="insights-reflection-loading">
+        <Loader2 size={24} className="insights-spin" />
+        <p>Generating predictions...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="insights-grid">
+      {/* Activity Forecast */}
+      <InsightCard icon={<BarChart3 size={18} />} title="Activity Forecast (14 days)" accentColor="#3b82f6">
+        {activityForecast ? (
+          <div>
+            <div className="pred-stats-row">
+              <div className="pred-stat">
+                <span className="pred-stat-val">{activityForecast.average_daily?.toFixed(1) ?? "—"}</span>
+                <span className="pred-stat-lbl">avg/day</span>
+              </div>
+              <div className="pred-stat">
+                <span className="pred-stat-val">{activityForecast.total_predicted?.toFixed(0) ?? "—"}</span>
+                <span className="pred-stat-lbl">total predicted</span>
+              </div>
+              <div className="pred-stat">
+                <span className={`pred-stat-val pred-trend-${activityForecast.trend_direction}`}>
+                  {activityForecast.trend_direction === "rising" ? "\u2191" : activityForecast.trend_direction === "declining" ? "\u2193" : "\u2192"} {activityForecast.trend_direction}
+                </span>
+                <span className="pred-stat-lbl">trend</span>
+              </div>
+            </div>
+            {activityForecast.point_forecast && (
+              <div className="pred-bar-chart">
+                {activityForecast.point_forecast.map((val: number, i: number) => {
+                  const maxVal = Math.max(...activityForecast.point_forecast, 1);
+                  return (
+                    <div key={i} className="pred-bar-col" title={`Day ${i + 1}: ${val.toFixed(1)}`}>
+                      <div className="pred-bar" style={{ height: `${(val / maxVal) * 100}%` }} />
+                      <span className="pred-bar-label">{activityForecast.forecast_dates?.[i]?.slice(5) ?? `D${i+1}`}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {activityForecast.insights?.length > 0 && (
+              <ul className="pred-insights">
+                {activityForecast.insights.map((ins: string, i: number) => (
+                  <li key={i}>{ins}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <p className="insights-empty">Insufficient activity data for forecasting.</p>
+        )}
+      </InsightCard>
+
+      {/* Emerging Topics */}
+      <InsightCard icon={<TrendingUp size={18} />} title="Emerging Topics" accentColor="#8b5cf6">
+        {emergingEntities.length > 0 ? (
+          <div className="pred-entity-list">
+            {emergingEntities.slice(0, 8).map((e: any, i: number) => (
+              <div key={i} className="pred-entity-row">
+                <span className={`pred-entity-trend pred-trend-${e.trend_direction}`}>
+                  {e.trend_direction === "rising" ? "\u2191" : e.trend_direction === "declining" ? "\u2193" : "\u2192"}
+                </span>
+                <span className="pred-entity-name">{e.entity_value}</span>
+                <span className="pred-entity-type">{e.entity_type}</span>
+                <span className={`pred-entity-growth ${e.growth_rate > 0 ? "positive" : e.growth_rate < 0 ? "negative" : ""}`}>
+                  {e.growth_rate > 0 ? "+" : ""}{(e.growth_rate * 100).toFixed(0)}%
+                </span>
+                {e.is_emerging && <span className="pred-badge-emerging">emerging</span>}
+                {e.is_fading && <span className="pred-badge-fading">fading</span>}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="insights-empty">No entity trends available yet.</p>
+        )}
+      </InsightCard>
+
+      {/* Relationship Health */}
+      <InsightCard icon={<Heart size={18} />} title="Relationship Health" accentColor="#ef4444">
+        {relationshipForecast.length > 0 ? (
+          <div className="pred-relationship-list">
+            {relationshipForecast.slice(0, 8).map((r: any, i: number) => (
+              <div
+                key={i}
+                className="pred-rel-row"
+                onClick={() => dispatch({
+                  type: "SET_CONTEXT_MODE",
+                  mode: r.target_type === "person"
+                    ? { type: "person", personId: r.target_id }
+                    : { type: "project", projectId: r.target_id },
+                })}
+              >
+                <span className={`pred-rel-health pred-health-${r.follow_up_urgency}`} />
+                <span className="pred-rel-name">{r.target_name}</span>
+                <span className="pred-rel-type">{r.target_type}</span>
+                <span className="pred-rel-days">{r.days_since_last_interaction}d ago</span>
+                {r.dormancy_risk > 0.5 && (
+                  <span className="pred-rel-risk">{(r.dormancy_risk * 100).toFixed(0)}% risk</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="insights-empty">No relationship forecasts available.</p>
+        )}
+      </InsightCard>
+
+      {/* Graph Evolution */}
+      <InsightCard icon={<Brain size={18} />} title="Graph Evolution" accentColor="#10b981">
+        {graphEvolution ? (
+          <div>
+            <div className="pred-stats-row">
+              <div className="pred-stat">
+                <span className="pred-stat-val">{graphEvolution.current_node_count}</span>
+                <span className="pred-stat-lbl">nodes</span>
+              </div>
+              <div className="pred-stat">
+                <span className="pred-stat-val">{graphEvolution.current_edge_count}</span>
+                <span className="pred-stat-lbl">edges</span>
+              </div>
+              <div className="pred-stat">
+                <span className="pred-stat-val">{(graphEvolution.predicted_node_growth * 100).toFixed(0)}%</span>
+                <span className="pred-stat-lbl">node growth</span>
+              </div>
+              <div className="pred-stat">
+                <span className="pred-stat-val">{(graphEvolution.predicted_edge_growth * 100).toFixed(0)}%</span>
+                <span className="pred-stat-lbl">edge growth</span>
+              </div>
+            </div>
+            {graphEvolution.cluster_formation_likelihood > 0.5 && (
+              <p style={{ fontSize: "0.82rem", color: "#10b981", margin: "8px 0 0" }}>
+                High probability of new topic clusters forming
+              </p>
+            )}
+            {graphEvolution.insights?.length > 0 && (
+              <ul className="pred-insights">
+                {graphEvolution.insights.map((ins: string, i: number) => (
+                  <li key={i}>{ins}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <p className="insights-empty">Insufficient data for graph evolution forecasting.</p>
+        )}
+      </InsightCard>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -828,6 +1030,13 @@ export function InsightsDashboard() {
           >
             <Heart size={14} />
             Relationships
+          </button>
+          <button
+            className={`insights-tab ${activeTab === "predictions" ? "insights-tab-active" : ""}`}
+            onClick={() => setActiveTab("predictions")}
+          >
+            <Sparkles size={14} />
+            Predictions
           </button>
         </div>
 
@@ -1167,6 +1376,7 @@ export function InsightsDashboard() {
         {activeTab === "weekly_report" && <WeeklyReport />}
         {activeTab === "followups" && <FollowUpSuggestions />}
         {activeTab === "relationships" && <RelationshipDashboard />}
+        {activeTab === "predictions" && <PredictionsPanel />}
       </div>
 
       <style>{`
@@ -1876,6 +2086,131 @@ export function InsightsDashboard() {
           opacity: 0.6;
           cursor: not-allowed;
         }
+
+        /* Predictions panel */
+        .pred-stats-row {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+        .pred-stat {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          flex: 1;
+          padding: 8px;
+          background: var(--bg-tertiary, #0f0f12);
+          border-radius: 8px;
+        }
+        .pred-stat-val {
+          font-size: 1.1rem;
+          font-weight: 700;
+          color: var(--text-primary, #e4e4e7);
+        }
+        .pred-stat-lbl {
+          font-size: 0.68rem;
+          color: var(--text-muted, #71717a);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .pred-trend-rising { color: #10b981; }
+        .pred-trend-declining { color: #ef4444; }
+        .pred-trend-stable { color: #71717a; }
+        .pred-trend-volatile { color: #f59e0b; }
+
+        .pred-bar-chart {
+          display: flex;
+          align-items: flex-end;
+          gap: 3px;
+          height: 80px;
+          margin: 8px 0;
+        }
+        .pred-bar-col {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          height: 100%;
+          justify-content: flex-end;
+        }
+        .pred-bar {
+          width: 100%;
+          background: var(--accent, #3b82f6);
+          border-radius: 3px 3px 0 0;
+          min-height: 2px;
+          transition: height 0.3s ease;
+        }
+        .pred-bar-label {
+          font-size: 0.6rem;
+          color: var(--text-muted, #71717a);
+          margin-top: 4px;
+          white-space: nowrap;
+        }
+        .pred-insights {
+          list-style: none;
+          padding: 0;
+          margin: 8px 0 0;
+        }
+        .pred-insights li {
+          font-size: 0.78rem;
+          color: var(--text-secondary, #a1a1aa);
+          padding: 4px 0;
+          border-left: 2px solid var(--accent, #3b82f6);
+          padding-left: 10px;
+          margin-bottom: 4px;
+        }
+
+        .pred-entity-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .pred-entity-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 8px;
+          border-radius: 6px;
+          transition: background 0.1s;
+        }
+        .pred-entity-row:hover { background: var(--bg-tertiary, #0f0f12); }
+        .pred-entity-trend { font-weight: 700; font-size: 14px; width: 18px; text-align: center; }
+        .pred-entity-name { flex: 1; font-size: 0.82rem; color: var(--text-primary, #e4e4e7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pred-entity-type { font-size: 0.68rem; color: var(--text-muted, #71717a); text-transform: uppercase; }
+        .pred-entity-growth { font-size: 0.78rem; font-weight: 600; }
+        .pred-entity-growth.positive { color: #10b981; }
+        .pred-entity-growth.negative { color: #ef4444; }
+        .pred-badge-emerging { font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; background: rgba(16,185,129,0.15); color: #10b981; font-weight: 600; text-transform: uppercase; }
+        .pred-badge-fading { font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; background: rgba(239,68,68,0.15); color: #ef4444; font-weight: 600; text-transform: uppercase; }
+
+        .pred-relationship-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .pred-rel-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 8px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: background 0.1s;
+        }
+        .pred-rel-row:hover { background: var(--bg-tertiary, #0f0f12); }
+        .pred-rel-health {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+        .pred-health-normal { background: #10b981; }
+        .pred-health-medium { background: #f59e0b; }
+        .pred-health-high { background: #ef4444; }
+        .pred-rel-name { flex: 1; font-size: 0.82rem; color: var(--text-primary, #e4e4e7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pred-rel-type { font-size: 0.68rem; color: var(--text-muted, #71717a); text-transform: uppercase; }
+        .pred-rel-days { font-size: 0.75rem; color: var(--text-muted, #71717a); }
+        .pred-rel-risk { font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: rgba(239,68,68,0.15); color: #ef4444; font-weight: 600; }
 
         /* Responsive */
         @media (max-width: 700px) {

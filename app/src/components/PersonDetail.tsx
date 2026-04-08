@@ -307,6 +307,26 @@ export function PersonDetail({ personId }: { personId: string }) {
           font-weight: 600;
           margin: 0 0 4px;
           line-height: 1.3;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .prd-health-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 11px;
+          font-weight: 600;
+          padding: 3px 8px;
+          border-radius: 12px;
+          border: 1px solid;
+          white-space: nowrap;
+        }
+        .prd-health-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          flex-shrink: 0;
         }
 
         .prd-meta {
@@ -654,7 +674,30 @@ export function PersonDetail({ personId }: { personId: string }) {
               placeholder="Name"
             />
           ) : (
-            <h2 className="prd-name">{person.name}</h2>
+            <h2 className="prd-name">
+              {person.name}
+              {(() => {
+                const risk = state.dormancyRisk?.find(
+                  (r) => r.id === personId && r.type === "person"
+                );
+                if (!risk) return null;
+                const color = risk.risk_level === "high" || risk.risk_level === "critical"
+                  ? "#ef4444"
+                  : risk.risk_level === "medium"
+                    ? "#f59e0b"
+                    : "#10b981";
+                return (
+                  <span
+                    className="prd-health-badge"
+                    style={{ background: `${color}22`, color, borderColor: `${color}44` }}
+                    title={`${risk.predicted_days_until_dormant} days until dormant`}
+                  >
+                    <span className="prd-health-dot" style={{ background: color }} />
+                    {risk.predicted_days_until_dormant}d
+                  </span>
+                );
+              })()}
+            </h2>
           )}
 
           {editing ? (

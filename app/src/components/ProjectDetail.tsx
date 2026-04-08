@@ -316,6 +316,32 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               {draftsInitialized ? titleDraft : project.title}
             </h1>
           )}
+          {(() => {
+            const risk = state.dormancyRisk?.find(
+              (r) => r.id === projectId && r.type === "project"
+            );
+            if (!risk) return null;
+            const color = risk.risk_level === "high" || risk.risk_level === "critical"
+              ? "#ef4444"
+              : risk.risk_level === "medium"
+                ? "#f59e0b"
+                : "#10b981";
+            const trendIcon = risk.risk_level === "high" || risk.risk_level === "critical"
+              ? "\u2193"
+              : risk.risk_level === "medium"
+                ? "\u2192"
+                : "\u2191";
+            return (
+              <span
+                className="pd-trend-badge"
+                style={{ background: `${color}22`, color, borderColor: `${color}44` }}
+                title={`${risk.days_since_contact}d since activity \u2022 ${risk.predicted_days_until_dormant}d until stale`}
+              >
+                <span style={{ fontWeight: 700 }}>{trendIcon}</span>
+                {risk.predicted_days_until_dormant}d until stale
+              </span>
+            );
+          })()}
         </div>
 
         {/* Meta row */}
@@ -736,6 +762,19 @@ const styles = `
 .pd-delete-btn:hover {
   color: #ef4444;
   border-color: #ef444466;
+}
+
+.pd-trend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid;
+  white-space: nowrap;
+  margin-left: 4px;
 }
 
 /* Title */

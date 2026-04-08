@@ -129,6 +129,27 @@ export interface CalendarEventState {
   source_title: string;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Prediction types                                                   */
+/* ------------------------------------------------------------------ */
+
+export interface PredictionSummary {
+  activity_outlook: string;
+  emerging_topics: { entity: string; trend: "rising" | "stable" | "declining"; mentions: number }[];
+  graph_stats: { predicted_new_nodes: number; predicted_new_edges: number; growth_rate: number };
+  generated_at: string;
+}
+
+export interface DormancyRiskEntry {
+  id: string;
+  name: string;
+  type: "person" | "project";
+  days_since_contact: number;
+  predicted_days_until_dormant: number;
+  risk_level: "low" | "medium" | "high";
+  last_activity: string | null;
+}
+
 export interface AppState {
   vaultPath: string | null;
   notes: Note[];
@@ -157,6 +178,9 @@ export interface AppState {
   dormantProjects: ProjectState[];
   commitments: CommitmentData[];
   contextEvents: ContextEventData[];
+  // Prediction state
+  predictionSummary: PredictionSummary | null;
+  dormancyRisk: DormancyRiskEntry[];
 }
 
 export const initialState: AppState = {
@@ -183,6 +207,8 @@ export const initialState: AppState = {
   dormantProjects: [],
   commitments: [],
   contextEvents: [],
+  predictionSummary: null,
+  dormancyRisk: [],
 };
 
 export type AppAction =
@@ -232,7 +258,10 @@ export type AppAction =
   | { type: "SET_DORMANT_PEOPLE"; people: PersonState[] }
   | { type: "SET_DORMANT_PROJECTS"; projects: ProjectState[] }
   | { type: "SET_COMMITMENTS"; commitments: CommitmentData[] }
-  | { type: "SET_CONTEXT_EVENTS"; events: ContextEventData[] };
+  | { type: "SET_CONTEXT_EVENTS"; events: ContextEventData[] }
+  // Predictions
+  | { type: "SET_PREDICTION_SUMMARY"; summary: PredictionSummary }
+  | { type: "SET_DORMANCY_RISK"; entries: DormancyRiskEntry[] };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -390,6 +419,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, commitments: action.commitments };
     case "SET_CONTEXT_EVENTS":
       return { ...state, contextEvents: action.events };
+    // --- Predictions ---
+    case "SET_PREDICTION_SUMMARY":
+      return { ...state, predictionSummary: action.summary };
+    case "SET_DORMANCY_RISK":
+      return { ...state, dormancyRisk: action.entries };
     default:
       return state;
   }

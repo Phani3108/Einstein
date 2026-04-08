@@ -79,6 +79,10 @@ function App() {
       api.getDormantProjects().then(p => dispatch({ type: "SET_DORMANT_PROJECTS", projects: p })).catch(() => {});
       api.getCommitments().then(c => dispatch({ type: "SET_COMMITMENTS", commitments: c })).catch(() => {});
       api.getContextEvents(undefined, undefined, undefined, 50).then(e => dispatch({ type: "SET_CONTEXT_EVENTS", events: e })).catch(() => {});
+
+      // Load prediction data
+      api.getPredictionSummary().then(s => dispatch({ type: "SET_PREDICTION_SUMMARY", summary: s })).catch(() => {});
+      api.getDormancyRisk().then(r => dispatch({ type: "SET_DORMANCY_RISK", entries: Array.isArray(r) ? r : r?.entries ?? [] })).catch(() => {});
     }
     return () => {
       syncManager.destroy();

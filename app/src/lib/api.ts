@@ -747,4 +747,42 @@ export const api = {
 
   getIntelligenceSummary: (): Promise<any> =>
     request<any>(`${CLOUD_API}/api/v1/intelligence/summary`),
+
+  // ─── Ask AI (Cloud RAG) ────────────────────────────
+  askAI: (question: string): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/tools/ask`, {
+      method: "POST",
+      body: JSON.stringify({ query: question }),
+    }),
+
+  // ─── Predictions ───────────────────────────────────
+  getActivityForecast: (days: number = 14): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/predictions/activity/forecast`, {
+      method: "POST",
+      body: JSON.stringify({ horizon_days: days }),
+    }),
+
+  getEmergingEntities: (days: number = 30): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/predictions/entities/emerging`, {
+      method: "POST",
+      body: JSON.stringify({ lookback_days: days }),
+    }),
+
+  getRelationshipForecast: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/predictions/relationships/forecast`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  getGraphEvolution: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/predictions/graph/evolution`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  getPredictionSummary: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/predictions/summary`),
+
+  getDormancyRisk: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/predictions/dormancy-risk`),
 };

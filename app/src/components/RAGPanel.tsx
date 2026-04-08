@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useApp } from "../lib/store";
+import { api } from "../lib/api";
 import { createNoteAndProcess } from "../lib/dataPipeline";
 import {
   Brain, Send, RefreshCw, ChevronDown, ChevronRight,
@@ -35,6 +36,7 @@ interface RAGStatus {
 }
 
 const SIDECAR = "http://127.0.0.1:9721";
+const isCloud = typeof window !== "undefined" && window.location.hostname !== "localhost";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -117,13 +119,11 @@ export function RAGPanel() {
   /* ---- fetch status on mount ---- */
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${SIDECAR}/rag/status`);
-      if (!res.ok) throw new Error(`Status ${res.status}`);
-      const data: RAGStatus = await res.json();
-      setStatus(data);
+      const data = await api.ragStatus();
+      setStatus(data as RAGStatus);
       setStatusError(null);
     } catch (err: any) {
-      setStatusError(err.message ?? "Cannot reach sidecar");
+      setStatusError(err.message ?? "Cannot reach API");
     }
   }, []);
 
@@ -137,12 +137,16 @@ export function RAGPanel() {
     setIndexing(true);
     try {
       const payload = notes.map((n) => ({ id: n.id, title: n.title, content: n.content }));
-      const res = await fetch(`${SIDECAR}/rag/index`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: payload }),
-      });
-      if (!res.ok) throw new Error(`Index failed (${res.status})`);
+      if (isCloud) {
+        await api.ragIndex(payload);
+      } else {
+        const res = await fetch(`${SIDECAR}/rag/index`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: payload }),
+        });
+        if (!res.ok) throw new Error(`Index failed (${res.status})`);
+      }
       await fetchStatus();
     } catch (err: any) {
       console.error("Indexing error:", err);
@@ -170,48 +174,60 @@ export function RAGPanel() {
 
     try {
       abortRef.current = new AbortController();
-      const res = await fetch(`${SIDECAR}/rag/ask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, conversation_history: conversationHistory, top_k: 5 }),
-        signal: abortRef.current.signal,
-      });
 
-      if (!res.ok) throw new Error(`Ask failed (${res.status})`);
+      if (isCloud) {
+        const result = await api.askAI(question);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsg.id
+              ? { ...m, content: result.answer || result.summary || JSON.stringify(result), sources: result.sources }
+              : m
+          )
+        );
+      } else {
+        const res = await fetch(`${SIDECAR}/rag/ask`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, conversation_history: conversationHistory, top_k: 5 }),
+          signal: abortRef.current.signal,
+        });
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let accumulated = "";
-      let sources: Source[] | undefined;
+        if (!res.ok) throw new Error(`Ask failed (${res.status})`);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let accumulated = "";
+        let sources: Source[] | undefined;
 
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            if (event.type === "chunk") {
-              accumulated += event.content;
-              setMessages((prev) =>
-                prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: accumulated } : m))
-              );
-            } else if (event.type === "sources") {
-              sources = event.sources;
-              setMessages((prev) =>
-                prev.map((m) => (m.id === assistantMsg.id ? { ...m, sources } : m))
-              );
-            } else if (event.type === "done") {
-              // stream finished
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.type === "chunk") {
+                accumulated += event.content;
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: accumulated } : m))
+                );
+              } else if (event.type === "sources") {
+                sources = event.sources;
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantMsg.id ? { ...m, sources } : m))
+                );
+              } else if (event.type === "done") {
+                // stream finished
+              }
+            } catch {
+              // ignore parse errors for partial lines
             }
-          } catch {
-            // ignore parse errors for partial lines
           }
         }
       }
@@ -562,7 +578,7 @@ export function RAGPanel() {
               </>
             )}
             {statusError && (
-              <span className="rag-badge rag-badge--error">Sidecar offline</span>
+              <span className="rag-badge rag-badge--error">{isCloud ? "API unavailable" : "Sidecar offline"}</span>
             )}
             <button
               className="rag-index-btn"

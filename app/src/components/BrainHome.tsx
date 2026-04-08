@@ -478,6 +478,93 @@ export function BrainHome() {
           </div>
         </div>
 
+        {/* Predictions */}
+        <div className="bh-card bh-card-wide">
+          <div className="bh-card-header">
+            <Sparkles size={16} />
+            <span>Predictions</span>
+          </div>
+          <div className="bh-card-body bh-predictions-grid">
+            {/* Activity Outlook */}
+            <div className="bh-prediction-card">
+              <div className="bh-prediction-icon bh-pred-activity">
+                <TrendingUp size={16} />
+              </div>
+              <div className="bh-prediction-content">
+                <h4 className="bh-prediction-title">Activity Outlook</h4>
+                <p className="bh-prediction-text">
+                  {state.predictionSummary?.activity_outlook
+                    || (state.predictionSummary?.activity_summary
+                      ? (state.predictionSummary.activity_summary.trend === "increasing"
+                          ? "Busy period ahead — activity is trending up"
+                          : state.predictionSummary.activity_summary.trend === "decreasing"
+                            ? "Quieter week ahead — activity is trending down"
+                            : "Steady pace expected — activity is stable")
+                      : "Gathering activity data...")}
+                </p>
+              </div>
+            </div>
+
+            {/* Emerging Topics */}
+            <div className="bh-prediction-card">
+              <div className="bh-prediction-icon bh-pred-topics">
+                <Eye size={16} />
+              </div>
+              <div className="bh-prediction-content">
+                <h4 className="bh-prediction-title">Emerging Topics</h4>
+                {state.predictionSummary?.emerging_topics && state.predictionSummary.emerging_topics.length > 0 ? (
+                  <div className="bh-emerging-list">
+                    {state.predictionSummary.emerging_topics.slice(0, 3).map((topic: any, i: number) => (
+                      <span key={i} className="bh-emerging-item">
+                        <span className={`bh-trend-arrow ${topic.trend === "rising" ? "bh-trend-up" : topic.trend === "declining" ? "bh-trend-down" : ""}`}>
+                          {topic.trend === "rising" ? "\u2191" : topic.trend === "declining" ? "\u2193" : "\u2192"}
+                        </span>
+                        {topic.entity}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="bh-prediction-text">No emerging topics yet</p>
+                )}
+              </div>
+            </div>
+
+            {/* Dormancy Risk */}
+            <div className="bh-prediction-card">
+              <div className="bh-prediction-icon bh-pred-dormancy">
+                <AlertTriangle size={16} />
+              </div>
+              <div className="bh-prediction-content">
+                <h4 className="bh-prediction-title">Dormancy Risk</h4>
+                {state.dormancyRisk.length > 0 ? (
+                  <div className="bh-dormancy-list">
+                    {state.dormancyRisk.slice(0, 3).map((entry) => (
+                      <button
+                        key={entry.id}
+                        className="bh-dormancy-item"
+                        onClick={() =>
+                          dispatch({
+                            type: "SET_CONTEXT_MODE",
+                            mode: entry.type === "person"
+                              ? { type: "person", personId: entry.id }
+                              : { type: "project", projectId: entry.id },
+                          })
+                        }
+                      >
+                        <span className={`bh-risk-dot bh-risk-${entry.risk_level}`} />
+                        <span className="bh-dormancy-name">{entry.name}</span>
+                        <span className="bh-dormancy-days">{entry.predicted_days_until_dormant}d left</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="bh-prediction-text">All connections healthy</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Recent Activity */}
         <div className="bh-card bh-card-wide">
           <div className="bh-card-header">
@@ -982,6 +1069,104 @@ export function BrainHome() {
           font-size: 13px;
           color: var(--text-primary, #e4e4e7);
           line-height: 1.6;
+        }
+
+        .bh-predictions-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+        }
+        .bh-prediction-card {
+          display: flex;
+          gap: 12px;
+          padding: 14px;
+          border: 1px solid var(--border, #27272a);
+          border-radius: 8px;
+          background: var(--bg-primary, #1e1e2e);
+        }
+        .bh-prediction-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .bh-pred-activity { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+        .bh-pred-topics { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+        .bh-pred-dormancy { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+        .bh-prediction-content { flex: 1; min-width: 0; }
+        .bh-prediction-title {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-muted, #71717a);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin: 0 0 4px;
+        }
+        .bh-prediction-text {
+          font-size: 13px;
+          color: var(--text-primary, #e4e4e7);
+          margin: 0;
+          line-height: 1.5;
+        }
+        .bh-emerging-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .bh-emerging-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 8px;
+          border-radius: 4px;
+          background: rgba(139, 92, 246, 0.1);
+          color: #c4b5fd;
+          font-size: 12px;
+        }
+        .bh-trend-arrow { font-weight: 700; }
+        .bh-trend-up { color: #10b981; }
+        .bh-trend-down { color: #ef4444; }
+        .bh-dormancy-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .bh-dormancy-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: none;
+          border: none;
+          padding: 4px 0;
+          cursor: pointer;
+          text-align: left;
+          font-size: 12px;
+          color: var(--text-primary, #e4e4e7);
+          transition: color 0.1s;
+        }
+        .bh-dormancy-item:hover { color: var(--accent, #3b82f6); }
+        .bh-risk-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+        .bh-risk-low { background: #10b981; }
+        .bh-risk-medium { background: #f59e0b; }
+        .bh-risk-high, .bh-risk-critical { background: #ef4444; }
+        .bh-dormancy-name {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .bh-dormancy-days {
+          font-size: 11px;
+          color: var(--text-muted, #71717a);
+          flex-shrink: 0;
         }
 
         @keyframes bh-spin {
