@@ -51,13 +51,18 @@ def create_app() -> FastAPI:
     load_dotenv(dotenv_path=env_path)
     
     # Configure container
+    db_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://nyn@localhost:5432/einstein",
+    )
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
     container.config.from_dict(
         {
             "db": {
-                "connection_string": os.getenv(
-                    "DATABASE_URL",
-                    "postgresql+asyncpg://nyn@localhost:5432/einstein",
-                ),
+                "connection_string": db_url,
             },
             "api": {
                 "host": os.getenv("API_HOST", "0.0.0.0"),
