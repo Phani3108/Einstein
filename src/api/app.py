@@ -431,4 +431,18 @@ def create_app() -> FastAPI:
 
 
 # Create app instance for uvicorn
-app = create_app()
+try:
+    app = create_app()
+except Exception as _startup_exc:
+    import logging as _log
+    import traceback as _tb
+    _log.getLogger(__name__).error("create_app() failed: %s", _startup_exc)
+    _err_detail = _tb.format_exc()
+
+    _fallback = FastAPI(title="Einstein — startup error")
+
+    @_fallback.get("/{path:path}")
+    async def _diag(path: str = ""):
+        return {"error": "app_startup_failed", "detail": _err_detail}
+
+    app = _fallback
