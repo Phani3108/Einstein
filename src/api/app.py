@@ -440,14 +440,12 @@ try:
     app = create_app()
 except Exception as _startup_exc:
     import logging as _log
-    import traceback as _tb
-    _log.getLogger(__name__).error("create_app() failed: %s", _startup_exc)
-    _err_detail = _tb.format_exc()
+    _log.getLogger(__name__).error("create_app() failed: %s", _startup_exc, exc_info=True)
 
     _fallback = FastAPI(title="Einstein — startup error")
 
     @_fallback.get("/{path:path}")
     async def _diag(path: str = ""):
-        return {"error": "app_startup_failed", "detail": _err_detail}
+        return {"error": "app_startup_failed", "message": str(_startup_exc)}
 
     app = _fallback
