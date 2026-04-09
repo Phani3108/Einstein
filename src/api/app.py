@@ -360,35 +360,47 @@ def create_app() -> FastAPI:
             "Prediction routes disabled: %s", exc
         )
 
-    # Ensure the dev user exists in the DB so foreign-key references
-    # from notes / projects / etc. never fail with IntegrityError.
-    @app.on_event("startup")
-    async def _ensure_dev_user():
-        import logging
-        _log = logging.getLogger(__name__)
-        try:
-            db = container.db()
-            async with db.session() as session:
-                from sqlalchemy import text
-                await session.execute(
-                    text(
-                        "INSERT INTO users (id, email, hashed_password, is_active, is_admin, created_at, updated_at) "
-                        "VALUES (:id, :email, :pw, true, true, now(), now()) "
-                        "ON CONFLICT (id) DO NOTHING"
-                    ),
-                    {
-                        "id": "60bd95e0-1d86-49a0-99c4-1b72773ba450",
-                        "email": "admin@einstein.app",
-                        "pw": "!dev-auto-provisioned",
-                    },
+    # ── Dev-user guarantee ────────────────────────────────────────
+    # Ensures the dev user row exists in the "users" table before any
+    # route handler can INSERT rows that reference user_id via FK.
+    # Uses an ASGI-level @app.middleware so it runs on EVERY request
+    # (no-ops after the first success via a module-level flag).
+    _dev_user_ready = {"done": False}
+
+    @app.middleware("http")
+    async def ensure_dev_user_middleware(request, call_next):
+        if not _dev_user_ready["done"]:
+            try:
+                from uuid import UUID as _UUID
+                from sqlalchemy import select
+                from src.infrastructure.database.models import User as UserModel
+
+                _id = _UUID("60bd95e0-1d86-49a0-99c4-1b72773ba450")
+                db = container.db()
+                async with db.session() as session:
+                    result = await session.execute(
+                        select(UserModel).where(UserModel.id == _id)
+                    )
+                    if not result.scalar_one_or_none():
+                        from datetime import datetime
+                        dev = UserModel(
+                            id=_id,
+                            email="admin@einstein.app",
+                            hashed_password="!dev-auto-provisioned",
+                            is_active=True,
+                            is_admin=True,
+                            created_at=datetime.now(),
+                            updated_at=datetime.now(),
+                        )
+                        session.add(dev)
+                        await session.commit()
+                _dev_user_ready["done"] = True
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Dev user ensure failed: %s", exc
                 )
-                await session.commit()
-                _log.info("Dev user row ensured in users table")
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                "Dev user upsert skipped: %s", exc
-            )
+        return await call_next(request)
 
     # Customize OpenAPI schema
     def custom_openapi():
