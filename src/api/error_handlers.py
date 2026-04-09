@@ -273,7 +273,10 @@ class ErrorHandler:
         error_response = ErrorResponse.create(
             code="INTERNAL_ERROR",
             message="An internal error occurred",
-            details={"exception_type": type(exception).__name__},
+            details={
+                "exception_type": type(exception).__name__,
+                "detail": str(exception)[:500],
+            },
             request_id=request_id,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
