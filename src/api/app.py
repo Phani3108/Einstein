@@ -363,42 +363,47 @@ def create_app() -> FastAPI:
     # ── Dev-user guarantee ────────────────────────────────────────
     # Ensures the dev user row exists in the "users" table before any
     # route handler can INSERT rows that reference user_id via FK.
-    # Uses an ASGI-level @app.middleware so it runs on EVERY request
-    # (no-ops after the first success via a module-level flag).
     _dev_user_ready = {"done": False}
 
     @app.middleware("http")
     async def ensure_dev_user_middleware(request, call_next):
+        from starlette.responses import JSONResponse as _JsonResp
+
         if not _dev_user_ready["done"]:
             try:
                 from uuid import UUID as _UUID
-                from sqlalchemy import select
-                from src.infrastructure.database.models import User as UserModel
+                from sqlalchemy import text as _text
 
                 _id = _UUID("60bd95e0-1d86-49a0-99c4-1b72773ba450")
-                db = container.db()
-                async with db.session() as session:
-                    result = await session.execute(
-                        select(UserModel).where(UserModel.id == _id)
+                engine = container.db()._engine
+                async with engine.begin() as conn:
+                    row = await conn.execute(
+                        _text("SELECT id FROM users WHERE id = :uid"),
+                        {"uid": _id},
                     )
-                    if not result.scalar_one_or_none():
-                        from datetime import datetime
-                        dev = UserModel(
-                            id=_id,
-                            email="admin@einstein.app",
-                            hashed_password="!dev-auto-provisioned",
-                            is_active=True,
-                            is_admin=True,
-                            created_at=datetime.now(),
-                            updated_at=datetime.now(),
+                    if not row.first():
+                        await conn.execute(
+                            _text(
+                                "INSERT INTO users "
+                                "(id, email, hashed_password, is_active, is_admin, created_at, updated_at) "
+                                "VALUES (:uid, :email, :pw, true, true, now(), now())"
+                            ),
+                            {
+                                "uid": _id,
+                                "email": "admin@einstein.app",
+                                "pw": "!dev-auto-provisioned",
+                            },
                         )
-                        session.add(dev)
-                        await session.commit()
                 _dev_user_ready["done"] = True
             except Exception as exc:
-                import logging
-                logging.getLogger(__name__).warning(
-                    "Dev user ensure failed: %s", exc
+                import traceback
+                return _JsonResp(
+                    status_code=500,
+                    content={
+                        "error": "dev_user_setup_failed",
+                        "detail": str(exc),
+                        "traceback": traceback.format_exc(),
+                    },
                 )
         return await call_next(request)
 
