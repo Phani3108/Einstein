@@ -367,8 +367,6 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def ensure_dev_user_middleware(request, call_next):
-        from starlette.responses import JSONResponse as _JsonResp
-
         if not _dev_user_ready["done"]:
             try:
                 from uuid import UUID as _UUID
@@ -386,25 +384,18 @@ def create_app() -> FastAPI:
                             _text(
                                 "INSERT INTO users "
                                 "(id, email, hashed_password, is_active, is_admin, created_at, updated_at) "
-                                "VALUES (:uid, :email, :pw, true, true, now(), now())"
+                                "VALUES (:uid, :email, :pw, true, true, now(), now()) "
+                                "ON CONFLICT (id) DO NOTHING"
                             ),
                             {
                                 "uid": _id,
-                                "email": "admin@einstein.app",
+                                "email": "dev-60bd95e0@einstein.local",
                                 "pw": "!dev-auto-provisioned",
                             },
                         )
                 _dev_user_ready["done"] = True
-            except Exception as exc:
-                import traceback
-                return _JsonResp(
-                    status_code=500,
-                    content={
-                        "error": "dev_user_setup_failed",
-                        "detail": str(exc),
-                        "traceback": traceback.format_exc(),
-                    },
-                )
+            except Exception:
+                pass
         return await call_next(request)
 
     # Customize OpenAPI schema
