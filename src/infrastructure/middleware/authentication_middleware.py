@@ -97,6 +97,8 @@ class AuthenticationMiddleware:
 
     async def require_authentication(self, request: Request) -> User:
         """Return an authenticated user — always succeeds in dev mode."""
+        await _ensure_dev_user_in_db()
+
         credentials: Optional[HTTPAuthorizationCredentials] = (
             await self._bearer_scheme(request)
         )
@@ -109,7 +111,7 @@ class AuthenticationMiddleware:
             except Exception as exc:
                 logger.warning("Auth bypassed (dev mode): %s", exc)
 
-        return await self._get_dev_user()
+        return _DEFAULT_DEV_USER
 
     async def require_admin(self, request: Request) -> User:
         """Return an admin user — always succeeds in dev mode."""
