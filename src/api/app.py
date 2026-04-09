@@ -360,6 +360,36 @@ def create_app() -> FastAPI:
             "Prediction routes disabled: %s", exc
         )
 
+    # Ensure the dev user exists in the DB so foreign-key references
+    # from notes / projects / etc. never fail with IntegrityError.
+    @app.on_event("startup")
+    async def _ensure_dev_user():
+        import logging
+        _log = logging.getLogger(__name__)
+        try:
+            db = container.db()
+            async with db.session() as session:
+                from sqlalchemy import text
+                await session.execute(
+                    text(
+                        "INSERT INTO users (id, email, hashed_password, is_active, is_admin, created_at, updated_at) "
+                        "VALUES (:id, :email, :pw, true, true, now(), now()) "
+                        "ON CONFLICT (id) DO NOTHING"
+                    ),
+                    {
+                        "id": "60bd95e0-1d86-49a0-99c4-1b72773ba450",
+                        "email": "admin@einstein.app",
+                        "pw": "!dev-auto-provisioned",
+                    },
+                )
+                await session.commit()
+                _log.info("Dev user row ensured in users table")
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Dev user upsert skipped: %s", exc
+            )
+
     # Customize OpenAPI schema
     def custom_openapi():
         if app.openapi_schema:
