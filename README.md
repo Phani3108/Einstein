@@ -1,243 +1,270 @@
-# Personal Semantic Engine (Einstein)
+# Einstein
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/codevalley/einstein/releases/tag/v0.2.0)
-[![Python](https://img.shields.io/badge/python-3.11+-green.svg)](https://python.org)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+**Your Personal Semantic Engine** — turns scattered thoughts, notes, emails, and messages into an intelligent, searchable knowledge graph with predictive insights.
 
-A unified personal data repository that transforms scattered thoughts, notes, and information into a searchable, intelligent knowledge base using semantic understanding and AI-powered insights.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white)](https://python.org)
+[![React](https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
+[![FastAPI](https://img.shields.io/badge/fastapi-0.104+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![PostgreSQL](https://img.shields.io/badge/postgresql-13+-4169E1?logo=postgresql&logoColor=white)](https://postgresql.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## 🚀 Features
+---
 
-### ✅ Core Infrastructure (v0.2.0)
-- **Thought Capture**: Store and organize personal thoughts, notes, and ideas
-- **Semantic Understanding**: AI-powered entity extraction using LLM models
-- **Vector Storage**: Semantic search using OpenAI embeddings and Pinecone
-- **Knowledge Mapping**: Extract and store semantic relationships
-- **Clean Architecture**: Domain-driven design with SOLID principles
+## What It Does
 
-### 🔄 In Development (v0.3.0)
-- **REST API**: Complete API endpoints for all functionality
-- **Advanced Search**: Natural language query processing
-- **Knowledge Graphs**: Visualize connections between ideas and concepts
-- **Real-time Processing**: Live semantic analysis and indexing
+Einstein captures context from every tool you use — email, Slack, GitHub, Jira, Zoom, meetings, notes — and weaves it into a single knowledge graph. It surfaces what matters: who's going dormant, what's overdue, which relationships need attention, and what's likely to happen next.
 
-### 🎯 Planned Features
-- **Privacy-First**: Your data stays under your control
-- **Multi-modal Support**: Text, images, and documents
-- **Export/Import**: Data portability and backup
-- **Analytics**: Insights into your thinking patterns
+---
 
-## 🏗️ Architecture
+## Features
 
-Built with clean architecture principles ensuring maintainability and testability:
+### Brain & Knowledge Graph
+- **Semantic Knowledge Graph** — entities, relationships, and topics extracted automatically from your notes and events
+- **Interactive Graph View** — explore connections between people, projects, and ideas visually
+- **Smart Search** — natural language queries across your entire knowledge base
+- **Ask AI (RAG)** — conversational Q&A grounded in your own data
+
+### Context Capture
+- **Vault Notes** — Markdown-first note-taking with folders, frontmatter, outgoing links, and version history
+- **Meeting Briefings** — auto-generated prep packs before calls
+- **Action Items** — extracted from notes and tracked across projects
+- **Decisions Log** — record reasoning, alternatives, and revisit dates
+- **Calendar Events** — linked to notes and people
+
+### People & Relationships
+- **People Profiles** — auto-built dossiers from every interaction
+- **Dormancy Detection** — flags relationships going cold before they break
+- **Freshness Scoring** — quantifies how active each connection is
+- **Interaction Timeline** — full history per person
+
+### Projects
+- **Project Tracking** — status, deadlines, linked notes, associated people
+- **Activity Monitoring** — dormancy alerts for stale projects
+- **Cross-linking** — notes, actions, and events connected to projects automatically
+
+### Insights & Predictions
+- **Activity Heatmap** — 60-day activity patterns across all sources
+- **Trend Detection** — increasing, decreasing, or stable activity analysis
+- **Forecasting** — time-series predictions using statistical models (Holt-Winters) with optional deep learning backends
+- **Dormancy Risk** — predictive alerts for people and projects at risk of going inactive
+- **Forecast Accuracy** — retrospective MAPE, MAE, and coverage tracking
+
+### Integrations
+- **Gmail** — auto-capture emails
+- **Outlook** — Microsoft email sync
+- **Slack** — channel messages
+- **GitHub** — PRs, issues, reviews
+- **Jira** — issue tracking
+- **Zoom** — meeting transcripts
+- **Linear** — project tracking
+- **Telegram** — bot messages & channels
+- **Google Calendar** — event sync (via Gmail)
+- **OAuth2 Flows** — connect with one click, credentials stored securely
+- **Webhook Ingestion** — real-time event capture
+
+---
+
+## Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Presentation  │    │   Application   │    │     Domain      │
-│                 │    │                 │    │                 │
-│ • FastAPI       │───▶│ • Use Cases     │───▶│ • Entities      │
-│ • REST APIs     │    │ • Workflows     │    │ • Repositories  │
-│ • CLI Tools     │    │ • Orchestration │    │ • Services      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                                        │
-┌─────────────────────────────────────────────────────┘
-│
-▼
-┌─────────────────┐
-│ Infrastructure  │
-│                 │
-│ • PostgreSQL    │
-│ • OpenAI API    │
-│ • Pinecone      │
-│ • LiteLLM       │
-└─────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                     React Frontend (Vite)                     │
+│  BrainHome · Graph · Files · People · Projects · Insights    │
+│  Meetings · Actions · Ask AI · Integrations · Calendar       │
+└──────────────────────┬───────────────────────────────────────┘
+                       │ REST API
+┌──────────────────────▼───────────────────────────────────────┐
+│                    FastAPI Backend                            │
+│  15 route modules · Auth middleware · Error handlers         │
+├──────────────────────────────────────────────────────────────┤
+│  Domain          │  Application       │  Infrastructure      │
+│  · Entities      │  · Use Cases       │  · PostgreSQL        │
+│  · Repositories  │  · Orchestration   │  · Pinecone (vector) │
+│  · Services      │  · Validation      │  · Redis + ARQ       │
+│                  │                    │  · 9 Connectors      │
+│                  │                    │  · Forecasting       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## 🛠️ Tech Stack
+---
 
-- **Backend**: Python 3.11+, FastAPI, SQLAlchemy, Pydantic
-- **Database**: PostgreSQL with async support
-- **AI/ML**: OpenAI GPT models, LiteLLM, vector embeddings
-- **Vector DB**: Pinecone for semantic search
-- **Testing**: pytest, pytest-asyncio, comprehensive coverage
-- **Code Quality**: Black, isort, mypy, pre-commit hooks
-- **Dependency Management**: Poetry
-- **Architecture**: Clean Architecture, Domain-Driven Design
+## Tech Stack
 
-## 🚀 Getting Started
+| Layer | Technologies |
+|-------|-------------|
+| **Frontend** | React 18, TypeScript, Vite, Tauri (desktop), Lucide icons |
+| **Backend** | Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy (async) |
+| **Database** | PostgreSQL 13+ with asyncpg |
+| **Vector Search** | Pinecone, OpenAI embeddings |
+| **AI / LLM** | OpenAI GPT, LiteLLM |
+| **Background Jobs** | ARQ + Redis (cron workers, sync tasks) |
+| **Auth** | JWT (python-jose), bcrypt |
+| **Deployment** | Vercel (serverless), Docker |
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
 - Python 3.11+
+- Node.js 18+
 - PostgreSQL 13+
-- Poetry (for dependency management)
-- OpenAI API key
-- Pinecone account (for vector storage)
+- Redis (for background workers)
 
-### Installation
+### 1. Clone & install
 
-1. **Clone the repository:**
 ```bash
-git clone https://github.com/codevalley/einstein.git
-cd einstein
+git clone https://github.com/Phani3108/Einstein.git
+cd Einstein
+
+# Backend
+pip install -e .
+
+# Frontend
+cd app && npm install && cd ..
 ```
 
-2. **Install dependencies:**
-```bash
-poetry install
-```
+### 2. Configure environment
 
-3. **Set up environment variables:**
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your configuration:
-```bash
-# Database
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost/einstein
-TEST_DATABASE_URL=postgresql+asyncpg://postgres:password@localhost/einstein_test
+Set these in `.env`:
 
-# OpenAI
-OPENAI_API_KEY=your-openai-api-key-here
-
-# Pinecone
-PINECONE_API_KEY=your-pinecone-api-key-here
-PINECONE_ENVIRONMENT=your-pinecone-environment-here
-
-# LLM Configuration
-LLM_MODEL=gpt-4
-LLM_TEMPERATURE=0.0
+```
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost/einstein
+OPENAI_API_KEY=sk-...
+PINECONE_API_KEY=...
+REDIS_URL=redis://localhost:6379
 ```
 
-4. **Initialize the database:**
-```bash
-poetry run python scripts/init_db.py
-```
-
-5. **Run migrations:**
-```bash
-poetry run alembic upgrade head
-```
-
-6. **Verify installation:**
-```bash
-poetry run python verify_vector_implementation.py
-```
-
-## 🧪 Development
-
-### Running Tests
+### 3. Initialize the database
 
 ```bash
-# Run vector storage tests
-poetry run python tests/infrastructure/services/run_tests.py
-
-# Run architecture compliance check
-poetry run python check_architecture.py
-
-# Run all verification
-poetry run python verify_vector_implementation.py
+python scripts/init_db.py
+alembic upgrade head
 ```
 
-### Code Quality
+### 4. Seed mock data (optional)
 
 ```bash
-# Pre-commit quality checks
-poetry run python scripts/pre_commit_check.py
-
-# Format code
-poetry run black .
-poetry run isort .
-
-# Type checking
-poetry run mypy src/ --ignore-missing-imports
+python scripts/seed_mock_data.py
 ```
 
-### Version Management
+Or via API after starting the server:
 
 ```bash
-# Check current version
-poetry run python scripts/version_manager.py --current
-
-# Bump version
-poetry run python scripts/version_manager.py --bump minor
-
-# Create release tag
-poetry run python scripts/version_manager.py --tag --message "Release v0.3.0"
+curl -X POST http://localhost:8000/api/v1/dev/seed
 ```
 
-## 📊 Current Status
+### 5. Run
 
-### ✅ Completed (v0.2.0)
-- [x] Core domain entities and repositories
-- [x] LLM integration for entity extraction
-- [x] Vector storage infrastructure (OpenAI + Pinecone)
-- [x] Semantic search capabilities
-- [x] Comprehensive test suite
-- [x] Clean architecture compliance
-- [x] Version control standards
+```bash
+# Backend
+uvicorn src.api.app:app --reload
 
-### 🔄 In Progress (v0.3.0)
-- [ ] REST API implementation
-- [ ] API documentation with OpenAPI
-- [ ] Rate limiting and security
-- [ ] Client SDK development
+# Frontend (separate terminal)
+cd app && npm run dev
+```
 
-### 🎯 Roadmap
-- **v0.4.0**: Advanced Features (clustering, insights, export)
-- **v1.0.0**: Production Release (monitoring, deployment, docs)
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-## 🤝 Contributing
+---
 
-We follow strict version control standards and code quality practices:
+## Project Structure
 
-1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feat/amazing-feature`
-3. **Follow our standards**: Check `.kiro/steering/version-control-standards.md`
-4. **Run quality checks**: `poetry run python scripts/pre_commit_check.py`
-5. **Commit with conventional format**: `feat: add amazing feature`
-6. **Submit a pull request**
+```
+Einstein/
+├── app/                    # React frontend (Vite + TypeScript)
+│   └── src/
+│       ├── components/     # 40+ UI components
+│       ├── lib/            # API client, state management
+│       └── App.tsx         # Root with onboarding flow
+├── src/                    # Python backend
+│   ├── api/                # FastAPI routes (15 modules)
+│   ├── application/        # Use cases & orchestration
+│   ├── domain/             # Entities, enums, interfaces
+│   └── infrastructure/     # DB, connectors, prediction, tasks
+├── scripts/                # DB init, seeding, utilities
+├── migrations/             # Alembic database migrations
+├── tests/                  # Test suite
+├── browser-extension/      # Chrome extension (capture)
+├── mobile/                 # Mobile app scaffold
+└── einstein-cli/           # CLI tool
+```
 
-### Commit Standards
+---
 
-We use [Conventional Commits](https://www.conventionalcommits.org/):
-- `feat:` New features
-- `fix:` Bug fixes  
-- `docs:` Documentation changes
-- `style:` Code formatting
-- `refactor:` Code restructuring
-- `test:` Adding tests
-- `chore:` Maintenance tasks
+## API Endpoints
 
-## 📈 Performance & Quality
+| Group | Prefix | Purpose |
+|-------|--------|---------|
+| Vault | `/api/v1/vault` | Notes, decisions, config, files |
+| Thoughts | `/api/v1/thoughts` | Thought capture & retrieval |
+| Search | `/api/v1/search` | Semantic + hybrid search |
+| Context | `/api/v1/context` | Events, people, projects |
+| Insights | `/api/v1/insights` | Briefings, activity, dormancy |
+| Actions | `/api/v1/actions` | Action items CRUD |
+| Integrations | `/api/v1/integrations` | OAuth connect, sync, webhooks |
+| Predictions | `/api/v1/predictions` | Forecasts, accuracy, status |
+| Intelligence | `/api/v1/intelligence` | AI analysis & suggestions |
+| AI Tools | `/api/v1/ai` | Ask AI (RAG), summarization |
+| Timeline | `/api/v1/timeline` | Chronological event view |
+| Reflection | `/api/v1/reflection` | Weekly digests, patterns |
+| Distillation | `/api/v1/distillation` | Note condensation |
+| Admin | `/api/v1/admin` | User management, health |
+| Dev | `/api/v1/dev` | Seed data (dev only) |
 
-- **Test Coverage**: 100% for vector services
-- **Architecture**: Clean Architecture compliance verified
-- **Code Quality**: Black + isort + mypy
-- **Type Safety**: Complete type annotations
-- **Documentation**: Comprehensive docstrings and guides
+Interactive docs available at `/api/v1/docs` when the server is running.
 
-## 🔒 Security & Privacy
+---
 
-- **API Keys**: Secure environment variable management
-- **Data Isolation**: User-scoped vector operations
-- **Input Validation**: Pydantic models with validation
-- **Error Handling**: Domain-specific exceptions
+## Mock Data
 
-## 📚 Documentation
+The seed script creates a realistic, interconnected dataset for a startup founder building "Nexus":
 
-- [Version Control Standards](.kiro/steering/version-control-standards.md)
-- [Vector Implementation Summary](VECTOR_IMPLEMENTATION_SUMMARY.md)
-- [LLM Configuration Guide](docs/llm_configuration_guide.md)
-- [Changelog](CHANGELOG.md)
+- **7 people** — co-founder, designer, engineer, investor, advisor, customer, freelancer
+- **4 projects** — MVP, fundraising, marketing, enterprise pilot
+- **15 vault notes** — meetings, journals, specs, brainstorms, decisions
+- **10 action items** — varied priorities, statuses, and deadlines
+- **6 calendar events** — upcoming meetings and reminders
+- **30 context events** — emails, Slack, GitHub, calendar across 60 days
+- **16 semantic entities** — people, orgs, topics, technologies
+- **11 entity relationships** — builds, works_at, advocates, implements
+- **4 decisions** — with reasoning and alternatives
+- **4 commitments** — tracked promises to people
 
-## 📄 License
+All data is idempotent and can be re-run safely.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+---
 
-## 🙏 Acknowledgments
+## Deployment
 
-- Built with clean architecture principles
-- Inspired by domain-driven design
-- Powered by OpenAI and Pinecone technologies
+### Vercel
+
+The project deploys as a monorepo on Vercel:
+
+- **Frontend** — built with `npm run build` from `app/`, served as static files
+- **Backend** — Python serverless function via `api/index.py`
+- **Config** — see `vercel.json` for routing rules
+
+### Environment Variables (Vercel)
+
+Set `DATABASE_URL`, `OPENAI_API_KEY`, `PINECONE_API_KEY`, and `JWT_SECRET` in the Vercel dashboard.
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feat/your-feature`
+3. Follow conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`
+4. Push and open a pull request
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.
