@@ -335,10 +335,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               <span
                 className="pd-trend-badge"
                 style={{ background: `${color}22`, color, borderColor: `${color}44` }}
-                title={`${risk.days_since_contact}d since activity \u2022 ${risk.predicted_days_until_dormant}d until stale`}
+                title={`${risk.dormancy_days}d since activity \u2022 ${risk.days_until_dormant}d until stale`}
               >
                 <span style={{ fontWeight: 700 }}>{trendIcon}</span>
-                {risk.predicted_days_until_dormant}d until stale
+                {risk.days_until_dormant}d until stale
               </span>
             );
           })()}

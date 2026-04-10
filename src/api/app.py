@@ -342,12 +342,12 @@ def create_app() -> FastAPI:
     # Webhook ingestion routes (Phase 1A)
     app.include_router(webhook_router)
 
-    # Prediction routes (TimesFM integration) — lazy import so optional
-    # dependencies (numpy, torch, timesfm) never crash the app on startup
+    # Prediction routes — lazy import so optional
+    # dependencies never crash the app on startup
     try:
         from src.api.routes.predictions import create_predictions_router
 
-        use_mock_predictions = os.getenv("USE_MOCK_TIMESFM", "true").lower() == "true"
+        use_mock_predictions = os.getenv("USE_MOCK_FORECASTS", "true").lower() == "true"
         predictions_router = create_predictions_router(
             database=container.db(),
             auth_middleware=container.auth_middleware(),

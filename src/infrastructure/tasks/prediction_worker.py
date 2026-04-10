@@ -25,10 +25,10 @@ from src.infrastructure.database.models import (
     ProjectModel,
     User,
 )
-from src.infrastructure.prediction.timesfm_service import (
-    TimesFMService,
-    TimesFMConfig,
-    get_timesfm_service,
+from src.infrastructure.prediction.forecast_service import (
+    ForecastService,
+    ForecastConfig,
+    get_forecast_service,
 )
 from src.infrastructure.prediction.time_series_extractor import (
     ActivityExtractor,
@@ -71,12 +71,12 @@ async def run_prediction_job(
         "errors": [],
     }
 
-    use_mock = os.getenv("USE_MOCK_TIMESFM", "true").lower() == "true"
-    timesfm_service = get_timesfm_service(use_mock=use_mock)
+    use_mock = os.getenv("USE_MOCK_FORECASTS", "true").lower() == "true"
+    forecast_service = get_forecast_service(use_mock=use_mock)
 
-    if not timesfm_service.initialize():
-        stats["errors"].append("Failed to initialize TimesFM service")
-        logger.warning("TimesFM initialization failed, using mock forecasts")
+    if not forecast_service.initialize():
+        stats["errors"].append("Failed to initialize forecast service")
+        logger.warning("Forecast service initialization failed, using mock forecasts")
 
     cache = None
     if redis_client:
@@ -96,7 +96,7 @@ async def run_prediction_job(
             user_stats = await _process_user_predictions(
                 database=database,
                 user_id=uid,
-                timesfm_service=timesfm_service,
+                forecast_service=forecast_service,
                 cache=cache,
             )
 
@@ -125,7 +125,7 @@ async def run_prediction_job(
 async def _process_user_predictions(
     database: Database,
     user_id: UUID,
-    timesfm_service: TimesFMService,
+    forecast_service: ForecastService,
     cache: Optional[ForecastCache],
 ) -> Dict[str, int]:
     """Process all prediction types for a single user.
@@ -150,7 +150,7 @@ async def _process_user_predictions(
 
         if activity_series.length >= MIN_DATA_POINTS:
             try:
-                forecast = timesfm_service.forecast_activity(
+                forecast = forecast_service.forecast_activity(
                     daily_counts=activity_series.values,
                     horizon=DEFAULT_HORIZON,
                 )
@@ -188,7 +188,7 @@ async def _process_user_predictions(
 
         if valid_entities:
             try:
-                forecasts = timesfm_service.forecast_batch(
+                forecasts = forecast_service.forecast_batch(
                     {k: v.values for k, v in valid_entities.items()},
                     horizon=DEFAULT_HORIZON,
                 )
@@ -224,7 +224,7 @@ async def _process_user_predictions(
 
         if connection_series.length >= MIN_DATA_POINTS:
             try:
-                forecast = timesfm_service.forecast_single(
+                forecast = forecast_service.forecast_single(
                     connection_series.values,
                     horizon=DEFAULT_HORIZON,
                 )

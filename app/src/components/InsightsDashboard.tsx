@@ -678,22 +678,25 @@ function PredictionsPanel() {
   const [emergingEntities, setEmergingEntities] = useState<any[]>([]);
   const [relationshipForecast, setRelationshipForecast] = useState<any[]>([]);
   const [graphEvolution, setGraphEvolution] = useState<any>(null);
+  const [forecastAccuracy, setForecastAccuracy] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [af, ee, rf, ge] = await Promise.allSettled([
+      const [af, ee, rf, ge, acc] = await Promise.allSettled([
         api.getActivityForecast(14),
         api.getEmergingEntities(30),
         api.getRelationshipForecast(),
         api.getGraphEvolution(),
+        api.getForecastAccuracy(),
       ]);
       if (af.status === "fulfilled") setActivityForecast(af.value);
       if (ee.status === "fulfilled") setEmergingEntities(Array.isArray(ee.value) ? ee.value : []);
       if (rf.status === "fulfilled") setRelationshipForecast(Array.isArray(rf.value) ? rf.value : []);
       if (ge.status === "fulfilled") setGraphEvolution(ge.value);
+      if (acc.status === "fulfilled") setForecastAccuracy(acc.value);
       setLoaded(true);
     } catch {
       // silently continue
@@ -746,13 +749,35 @@ function PredictionsPanel() {
                 </span>
                 <span className="pred-stat-lbl">trend</span>
               </div>
+              <div className="pred-stat">
+                <span className={`pred-stat-val pred-confidence-${activityForecast.confidence_level}`}>
+                  {activityForecast.confidence_level}
+                </span>
+                <span className="pred-stat-lbl">confidence</span>
+              </div>
             </div>
             {activityForecast.point_forecast && (
               <div className="pred-bar-chart">
                 {activityForecast.point_forecast.map((val: number, i: number) => {
-                  const maxVal = Math.max(...activityForecast.point_forecast, 1);
+                  const maxVal = Math.max(
+                    ...(activityForecast.upper_bound || activityForecast.point_forecast),
+                    1,
+                  );
+                  const lower = activityForecast.lower_bound?.[i] ?? val;
+                  const upper = activityForecast.upper_bound?.[i] ?? val;
                   return (
-                    <div key={i} className="pred-bar-col" title={`Day ${i + 1}: ${val.toFixed(1)}`}>
+                    <div
+                      key={i}
+                      className="pred-bar-col"
+                      title={`Day ${i + 1}: ${val.toFixed(1)} (${lower.toFixed(1)}–${upper.toFixed(1)})`}
+                    >
+                      <div
+                        className="pred-bar-band"
+                        style={{
+                          bottom: `${(lower / maxVal) * 100}%`,
+                          height: `${((upper - lower) / maxVal) * 100}%`,
+                        }}
+                      />
                       <div className="pred-bar" style={{ height: `${(val / maxVal) * 100}%` }} />
                       <span className="pred-bar-label">{activityForecast.forecast_dates?.[i]?.slice(5) ?? `D${i+1}`}</span>
                     </div>
@@ -866,6 +891,35 @@ function PredictionsPanel() {
           <p className="insights-empty">Insufficient data for graph evolution forecasting.</p>
         )}
       </InsightCard>
+
+      {/* Forecast Accuracy */}
+      {forecastAccuracy?.available && (
+        <InsightCard icon={<Target size={18} />} title="Forecast Accuracy" accentColor="#06b6d4">
+          <div className="pred-stats-row">
+            <div className="pred-stat">
+              <span className={`pred-stat-val ${forecastAccuracy.accuracy >= 0.7 ? "pred-confidence-high" : forecastAccuracy.accuracy >= 0.4 ? "pred-confidence-medium" : "pred-confidence-low"}`}>
+                {(forecastAccuracy.accuracy * 100).toFixed(0)}%
+              </span>
+              <span className="pred-stat-lbl">accuracy</span>
+            </div>
+            <div className="pred-stat">
+              <span className="pred-stat-val">{(forecastAccuracy.coverage * 100).toFixed(0)}%</span>
+              <span className="pred-stat-lbl">band coverage</span>
+            </div>
+            <div className="pred-stat">
+              <span className="pred-stat-val">{forecastAccuracy.mae?.toFixed(2)}</span>
+              <span className="pred-stat-lbl">avg error</span>
+            </div>
+            <div className="pred-stat">
+              <span className="pred-stat-val">{forecastAccuracy.sample_days}d</span>
+              <span className="pred-stat-lbl">sample</span>
+            </div>
+          </div>
+          <p style={{ fontSize: "0.78rem", color: "var(--text-muted, #71717a)", margin: "8px 0 0" }}>
+            Retrospective: last week's forecast vs actual activity
+          </p>
+        </InsightCard>
+      )}
     </div>
   );
 }
@@ -2132,6 +2186,14 @@ export function InsightsDashboard() {
           align-items: center;
           height: 100%;
           justify-content: flex-end;
+          position: relative;
+        }
+        .pred-bar-band {
+          position: absolute;
+          width: 100%;
+          background: var(--accent, #3b82f6);
+          opacity: 0.15;
+          border-radius: 3px;
         }
         .pred-bar {
           width: 100%;
@@ -2139,7 +2201,12 @@ export function InsightsDashboard() {
           border-radius: 3px 3px 0 0;
           min-height: 2px;
           transition: height 0.3s ease;
+          position: relative;
+          z-index: 1;
         }
+        .pred-confidence-high { color: #10b981; }
+        .pred-confidence-medium { color: #f59e0b; }
+        .pred-confidence-low { color: #ef4444; }
         .pred-bar-label {
           font-size: 0.6rem;
           color: var(--text-muted, #71717a);

@@ -1,7 +1,7 @@
-"""TimesFM service for time-series forecasting.
+"""Time-series forecasting service for the Personal Semantic Engine.
 
-Wraps Google's TimesFM 2.5 foundation model for zero-shot time-series
-forecasting with quantile predictions.
+Provides zero-shot time-series forecasting with quantile predictions via a
+pluggable backend (loaded lazily when the optional prediction stack is installed).
 
 numpy and torch are optional dependencies — imported lazily inside methods
 so the module can be loaded in environments (e.g. Vercel) where only the
@@ -57,8 +57,8 @@ class ForecastResult:
 
 
 @dataclass
-class TimesFMConfig:
-    """Configuration for TimesFM model."""
+class ForecastConfig:
+    """Configuration for the forecasting service backend."""
 
     max_context: int = 1024
     max_horizon: int = 256
@@ -70,26 +70,26 @@ class TimesFMConfig:
     device: str = "cpu"
 
 
-class TimesFMService:
-    """Service for time-series forecasting using TimesFM 2.5.
+class ForecastService:
+    """Time-series forecasting service with quantile predictions.
 
-    Provides zero-shot forecasting capabilities with quantile predictions
-    for activity patterns, entity emergence, and relationship dynamics.
+    Provides zero-shot forecasting for activity patterns, entity emergence,
+    and relationship dynamics.
     """
 
-    def __init__(self, config: Optional[TimesFMConfig] = None):
-        """Initialize the TimesFM service.
+    def __init__(self, config: Optional[ForecastConfig] = None):
+        """Initialize the forecasting service.
 
         Args:
             config: Configuration for the model. Uses defaults if not provided.
         """
-        self._config = config or TimesFMConfig()
+        self._config = config or ForecastConfig()
         self._model = None
         self._is_initialized = False
         self._quantiles = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
     def _check_timesfm_available(self) -> bool:
-        """Check if TimesFM is installed."""
+        """Check if the forecast backend package is installed."""
         try:
             import timesfm  # noqa: F401
             return True
@@ -97,7 +97,7 @@ class TimesFMService:
             return False
 
     def initialize(self) -> bool:
-        """Initialize and load the TimesFM model.
+        """Load the forecast model from the configured backend.
 
         Returns:
             True if initialization successful, False otherwise.
@@ -107,7 +107,7 @@ class TimesFMService:
 
         if not self._check_timesfm_available():
             logger.warning(
-                "TimesFM not installed. Install with: "
+                "Forecast backend not installed. Install with: "
                 "pip install 'einstein-semantic-engine[prediction]'"
             )
             return False
@@ -118,16 +118,16 @@ class TimesFMService:
 
             if self._config.device == "cuda" and torch.cuda.is_available():
                 torch.set_float32_matmul_precision("high")
-                logger.info("Using CUDA for TimesFM inference")
+                logger.info("Using CUDA for forecast model inference")
             else:
-                logger.info("Using CPU for TimesFM inference")
+                logger.info("Using CPU for forecast model inference")
 
-            logger.info("Loading TimesFM 2.5 model from HuggingFace...")
+            logger.info("Loading forecast model from HuggingFace...")
             self._model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
                 "google/timesfm-2.5-200m-pytorch"
             )
 
-            logger.info("Compiling TimesFM model...")
+            logger.info("Compiling forecast model...")
             self._model.compile(
                 timesfm.ForecastConfig(
                     max_context=self._config.max_context,
@@ -141,11 +141,11 @@ class TimesFMService:
             )
 
             self._is_initialized = True
-            logger.info("TimesFM model initialized successfully")
+            logger.info("Forecast model initialized successfully")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to initialize TimesFM: {e}")
+            logger.error(f"Failed to initialize forecast model: {e}")
             return False
 
     @property
@@ -173,7 +173,7 @@ class TimesFMService:
         """
         if not self.is_available:
             raise RuntimeError(
-                "TimesFM model not initialized. Call initialize() first."
+                "Forecast model not initialized. Call initialize() first."
             )
 
         if not inputs:
@@ -289,21 +289,20 @@ class TimesFMService:
         return dict(zip(names, results))
 
 
-class MockTimesFMService(TimesFMService):
-    """Mock TimesFM service for testing without the actual model.
+class StatisticalForecastService(ForecastService):
+    """Lightweight forecasting using Holt-Winters exponential smoothing.
 
-    Generates simple trend-based forecasts for testing purposes.
+    Runs in pure Python (no numpy/torch) and produces meaningful forecasts
+    from real data patterns — suitable for serverless environments.
     """
 
     def initialize(self) -> bool:
-        """Initialize mock service (always succeeds)."""
         self._is_initialized = True
-        logger.info("Mock TimesFM service initialized")
+        logger.info("Statistical forecast service initialized")
         return True
 
     @property
     def is_available(self) -> bool:
-        """Mock is always available once initialized."""
         return self._is_initialized
 
     def forecast(
@@ -311,43 +310,179 @@ class MockTimesFMService(TimesFMService):
         inputs: Sequence[Sequence[float]],
         horizon: int = 7,
     ) -> list[ForecastResult]:
-        """Generate mock forecasts based on simple trend extrapolation."""
         if not self._is_initialized:
-            raise RuntimeError("Mock service not initialized")
+            raise RuntimeError("Service not initialized")
 
         results = []
         for series in inputs:
             vals = list(series)
-            recent = vals[-min(7, len(vals)):]
-            mean = sum(recent) / len(recent) if recent else 0.0
-            variance = sum((v - mean) ** 2 for v in recent) / len(recent) if recent else 0.0
-            std = max(variance ** 0.5, 0.1)
+            n = len(vals)
+            point, std = self._holt_forecast(vals, horizon)
+            quantiles = self._build_quantiles(point, std)
+            results.append(
+                ForecastResult(
+                    point_forecast=point,
+                    quantile_forecast=quantiles,
+                    horizon=horizon,
+                    context_length=n,
+                    quantiles=self._quantiles,
+                )
+            )
+        return results
 
-            if len(vals) >= 2:
-                trend = (vals[-1] - vals[-2]) / 2
-            else:
-                trend = 0
+    @staticmethod
+    def _holt_forecast(
+        vals: list[float],
+        horizon: int,
+        alpha: float = 0.3,
+        beta: float = 0.1,
+    ) -> tuple[list[float], list[float]]:
+        """Double exponential smoothing (Holt's linear method).
 
-            point = []
-            for i in range(horizon):
-                predicted = mean + trend * i
-                predicted = max(0, predicted)
-                point.append(predicted)
+        Returns (point_forecast, per-step_std) where std grows with horizon
+        to reflect increasing uncertainty.
+        """
+        n = len(vals)
+        if n == 0:
+            return [0.0] * horizon, [0.1] * horizon
 
-            quantiles = []
-            for i, p in enumerate(point):
-                q_vals = [
-                    max(0, p - 1.5 * std),
-                    max(0, p - 1.0 * std),
-                    max(0, p - 0.5 * std),
-                    max(0, p - 0.2 * std),
-                    p,
-                    p + 0.2 * std,
-                    p + 0.5 * std,
-                    p + 1.0 * std,
-                    p + 1.5 * std,
-                ]
-                quantiles.append(q_vals)
+        level = vals[0]
+        trend = (vals[-1] - vals[0]) / max(n - 1, 1) if n > 1 else 0.0
+
+        residuals: list[float] = []
+        for t in range(1, n):
+            forecast_t = level + trend
+            residuals.append(vals[t] - forecast_t)
+            prev_level = level
+            level = alpha * vals[t] + (1 - alpha) * (level + trend)
+            trend = beta * (level - prev_level) + (1 - beta) * trend
+
+        if residuals:
+            mse = sum(r * r for r in residuals) / len(residuals)
+            base_std = max(mse ** 0.5, 0.1)
+        else:
+            base_std = max(abs(level) * 0.1, 0.1)
+
+        point = []
+        stds = []
+        for h in range(1, horizon + 1):
+            p = max(0.0, level + trend * h)
+            point.append(round(p, 4))
+            stds.append(round(base_std * (1 + 0.1 * h), 4))
+
+        return point, stds
+
+    @staticmethod
+    def _build_quantiles(
+        point: list[float],
+        stds: list[float],
+    ) -> list[list[float]]:
+        z_scores = [-1.28, -0.84, -0.52, -0.25, 0.0, 0.25, 0.52, 0.84, 1.28]
+        quantiles = []
+        for p, s in zip(point, stds):
+            q_vals = [max(0.0, round(p + z * s, 4)) for z in z_scores]
+            quantiles.append(q_vals)
+        return quantiles
+
+
+class HFInferenceForecastService(ForecastService):
+    """Forecast service that calls the Hugging Face Inference API.
+
+    Requires a HF_API_TOKEN environment variable. Falls back to
+    StatisticalForecastService if the remote endpoint is unavailable.
+    """
+
+    def __init__(self, config: Optional[ForecastConfig] = None):
+        super().__init__(config)
+        self._api_token = os.getenv("HF_API_TOKEN", "")
+        self._model_id = "google/timesfm-2.5-200m-transformers"
+        self._api_url = f"https://api-inference.huggingface.co/models/{self._model_id}"
+        self._fallback = StatisticalForecastService(config)
+        self._remote_available = False
+
+    def initialize(self) -> bool:
+        self._fallback.initialize()
+        if not self._api_token:
+            logger.info(
+                "HF_API_TOKEN not set — using statistical forecast backend"
+            )
+            self._is_initialized = True
+            return True
+
+        try:
+            import urllib.request
+            import json as _json
+
+            req = urllib.request.Request(
+                self._api_url,
+                headers={
+                    "Authorization": f"Bearer {self._api_token}",
+                },
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = _json.loads(resp.read())
+                if isinstance(data, dict) and data.get("pipeline_tag"):
+                    self._remote_available = True
+                    logger.info("HF Inference endpoint available")
+        except Exception as exc:
+            logger.info("HF Inference endpoint not reachable: %s", exc)
+
+        self._is_initialized = True
+        return True
+
+    @property
+    def is_available(self) -> bool:
+        return self._is_initialized
+
+    def forecast(
+        self,
+        inputs: Sequence[Sequence[float]],
+        horizon: int = 7,
+    ) -> list[ForecastResult]:
+        if self._remote_available and self._api_token:
+            try:
+                return self._forecast_remote(inputs, horizon)
+            except Exception as exc:
+                logger.warning("HF Inference call failed, falling back: %s", exc)
+
+        return self._fallback.forecast(inputs, horizon)
+
+    def _forecast_remote(
+        self,
+        inputs: Sequence[Sequence[float]],
+        horizon: int,
+    ) -> list[ForecastResult]:
+        """Call the HF Inference API for each series."""
+        import urllib.request
+        import json as _json
+
+        results = []
+        for series in inputs:
+            payload = _json.dumps({
+                "inputs": list(series),
+                "parameters": {"prediction_length": horizon},
+            }).encode()
+
+            req = urllib.request.Request(
+                self._api_url,
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {self._api_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = _json.loads(resp.read())
+
+            point = data.get("mean_prediction", data.get("predictions", [0.0] * horizon))
+            point = [max(0.0, v) for v in point[:horizon]]
+
+            while len(point) < horizon:
+                point.append(point[-1] if point else 0.0)
+
+            stds = StatisticalForecastService._holt_forecast(list(series), horizon)[1]
+            quantiles = StatisticalForecastService._build_quantiles(point, stds)
 
             results.append(
                 ForecastResult(
@@ -358,23 +493,34 @@ class MockTimesFMService(TimesFMService):
                     quantiles=self._quantiles,
                 )
             )
-
         return results
 
 
-def get_timesfm_service(
-    config: Optional[TimesFMConfig] = None,
+MockForecastService = StatisticalForecastService
+
+
+def get_forecast_service(
+    config: Optional[ForecastConfig] = None,
     use_mock: bool = False,
-) -> TimesFMService:
-    """Factory function to get a TimesFM service instance.
+) -> ForecastService:
+    """Factory that returns the best available forecast backend.
+
+    Priority order:
+      1. Real local model (torch + timesfm installed)
+      2. HF Inference API (HF_API_TOKEN set)
+      3. Statistical forecast (pure Python, always available)
 
     Args:
-        config: Optional configuration for the model.
-        use_mock: If True, returns a mock service for testing.
+        config: Optional configuration for the backend.
+        use_mock: If True, skips model backends and returns statistical service.
 
     Returns:
-        TimesFMService instance (real or mock).
+        ForecastService instance.
     """
-    if use_mock or os.getenv("USE_MOCK_TIMESFM", "").lower() == "true":
-        return MockTimesFMService(config)
-    return TimesFMService(config)
+    if use_mock or os.getenv("USE_MOCK_FORECASTS", "").lower() == "true":
+        return StatisticalForecastService(config)
+
+    if os.getenv("HF_API_TOKEN"):
+        return HFInferenceForecastService(config)
+
+    return ForecastService(config)

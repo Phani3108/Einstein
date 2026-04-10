@@ -690,10 +690,10 @@ export function PersonDetail({ personId }: { personId: string }) {
                   <span
                     className="prd-health-badge"
                     style={{ background: `${color}22`, color, borderColor: `${color}44` }}
-                    title={`${risk.predicted_days_until_dormant} days until dormant`}
+                    title={`${risk.days_until_dormant} days until dormant`}
                   >
                     <span className="prd-health-dot" style={{ background: color }} />
-                    {risk.predicted_days_until_dormant}d
+                    {risk.days_until_dormant}d
                   </span>
                 );
               })()}

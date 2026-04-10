@@ -785,4 +785,7 @@ export const api = {
 
   getDormancyRisk: (): Promise<any> =>
     request<any>(`${CLOUD_API}/api/v1/predictions/dormancy-risk`),
+
+  getForecastAccuracy: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/predictions/accuracy`),
 };

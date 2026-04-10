@@ -1,7 +1,7 @@
 """Prediction API routes.
 
 Time-series forecasting for knowledge graph evolution, activity patterns,
-entity emergence, and relationship dynamics using TimesFM.
+entity emergence, and relationship dynamics.
 """
 
 from datetime import datetime, timedelta
@@ -12,23 +12,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.domain.entities.prediction import (
-    ActivityForecast,
     ConfidenceLevel,
-    EntityTrend,
-    GraphEvolutionForecast,
-    PredictionBatch,
     PredictionResult,
-    PredictionType,
-    RelationshipPrediction,
     TrendDirection,
 )
 from src.domain.entities.user import User
 from src.infrastructure.database.connection import Database
 from src.infrastructure.middleware.authentication_middleware import AuthenticationMiddleware
-from src.infrastructure.prediction.timesfm_service import (
-    TimesFMService,
-    TimesFMConfig,
-    get_timesfm_service,
+from src.infrastructure.prediction.forecast_service import (
+    ForecastService,
+    ForecastConfig,
+    get_forecast_service,
     ForecastResult,
 )
 from src.infrastructure.prediction.time_series_extractor import (
@@ -178,7 +172,7 @@ def _forecast_result_to_prediction(
     forecast: ForecastResult,
     start_date: datetime,
 ) -> PredictionResult:
-    """Convert TimesFM ForecastResult to domain PredictionResult."""
+    """Convert ForecastResult to domain PredictionResult."""
     forecast_dates = [
         start_date + timedelta(days=i) for i in range(forecast.horizon)
     ]
@@ -199,7 +193,7 @@ def _forecast_result_to_prediction(
 def create_predictions_router(
     database: Database,
     auth_middleware: AuthenticationMiddleware,
-    timesfm_config: Optional[TimesFMConfig] = None,
+    forecast_config: Optional[ForecastConfig] = None,
     use_mock: bool = False,
 ) -> APIRouter:
     """Create the predictions router with dependency injection.
@@ -207,7 +201,7 @@ def create_predictions_router(
     Args:
         database: Database connection for time series extraction.
         auth_middleware: Authentication middleware.
-        timesfm_config: Optional TimesFM configuration.
+        forecast_config: Optional forecast service configuration.
         use_mock: If True, use mock forecasting service for testing.
 
     Returns:
@@ -215,15 +209,15 @@ def create_predictions_router(
     """
     router = APIRouter(prefix="/api/v1/predictions", tags=["predictions"])
 
-    timesfm_service = get_timesfm_service(timesfm_config, use_mock=use_mock)
+    forecast_service = get_forecast_service(forecast_config, use_mock=use_mock)
 
     @router.on_event("startup")
-    async def initialize_timesfm():
-        """Initialize TimesFM model on startup."""
-        if not timesfm_service.initialize():
+    async def initialize_forecast_service():
+        """Initialize forecast model on startup."""
+        if not forecast_service.initialize():
             import logging
             logging.warning(
-                "TimesFM not initialized. Prediction endpoints will use mock forecasts."
+                "Forecast service not initialized. Prediction endpoints will use mock forecasts."
             )
 
     @router.get("/status")
@@ -233,8 +227,8 @@ def create_predictions_router(
         """Check if prediction service is available."""
         return {
             "service": "predictions",
-            "timesfm_available": timesfm_service.is_available,
-            "model": "TimesFM 2.5" if timesfm_service.is_available else "Mock",
+            "forecast_available": forecast_service.is_available,
+            "model": "forecast-v2.5" if forecast_service.is_available else "Mock",
             "user_id": str(user.id),
         }
 
@@ -247,8 +241,8 @@ def create_predictions_router(
 
         Returns predicted activity counts for the next N days with confidence bounds.
         """
-        if not timesfm_service.is_available:
-            timesfm_service.initialize()
+        if not forecast_service.is_available:
+            forecast_service.initialize()
 
         async with database.session() as session:
             extractor = ActivityExtractor(session)
@@ -268,7 +262,7 @@ def create_predictions_router(
                 detail=f"Insufficient data: only {series.length} data points. Need at least 7.",
             )
 
-        forecast = timesfm_service.forecast_activity(
+        forecast = forecast_service.forecast_activity(
             daily_counts=series.values,
             horizon=request.horizon,
         )
@@ -323,8 +317,8 @@ def create_predictions_router(
 
         Returns forecasts for top entities showing their predicted trajectory.
         """
-        if not timesfm_service.is_available:
-            timesfm_service.initialize()
+        if not forecast_service.is_available:
+            forecast_service.initialize()
 
         async with database.session() as session:
             extractor = EntityMentionExtractor(session)
@@ -357,7 +351,7 @@ def create_predictions_router(
         if not valid_series:
             return []
 
-        forecasts = timesfm_service.forecast_batch(
+        forecasts = forecast_service.forecast_batch(
             {k: v.values for k, v in valid_series.items()},
             horizon=request.horizon,
         )
@@ -416,8 +410,8 @@ def create_predictions_router(
 
         Returns dormancy risk scores and predicted next interaction timing.
         """
-        if not timesfm_service.is_available:
-            timesfm_service.initialize()
+        if not forecast_service.is_available:
+            forecast_service.initialize()
 
         async with database.session() as session:
             profile_extractor = ProfileMetricsExtractor(session)
@@ -489,8 +483,8 @@ def create_predictions_router(
 
         Returns forecasts for node/edge counts and cluster formation likelihood.
         """
-        if not timesfm_service.is_available:
-            timesfm_service.initialize()
+        if not forecast_service.is_available:
+            forecast_service.initialize()
 
         async with database.session() as session:
             activity_extractor = ActivityExtractor(session)
@@ -512,7 +506,7 @@ def create_predictions_router(
         current_edge_count = int(sum(connection_series.values))
 
         if activity_series.length >= 7:
-            node_forecast = timesfm_service.forecast_single(
+            node_forecast = forecast_service.forecast_single(
                 activity_series.values, horizon=request.horizon
             )
             predicted_nodes = sum(node_forecast.point_forecast)
@@ -523,7 +517,7 @@ def create_predictions_router(
             predicted_nodes = avg * request.horizon
 
         if connection_series.length >= 7:
-            edge_forecast = timesfm_service.forecast_single(
+            edge_forecast = forecast_service.forecast_single(
                 connection_series.values, horizon=request.horizon
             )
             predicted_edges = sum(edge_forecast.point_forecast)
@@ -598,8 +592,12 @@ def create_predictions_router(
 
         Provides a quick overview without generating full forecasts.
         """
+        from sqlalchemy import func as sa_func, select as sa_select
+
         async with database.session() as session:
             activity_extractor = ActivityExtractor(session)
+            entity_extractor = EntityMentionExtractor(session)
+            connection_extractor = ConnectionRateExtractor(session)
             profile_extractor = ProfileMetricsExtractor(session)
 
             start_date = datetime.utcnow() - timedelta(days=30)
@@ -613,6 +611,72 @@ def create_predictions_router(
                 user_id=user.id,
                 dormancy_threshold_days=21,
             )
+
+            entity_summary = None
+            try:
+                entity_series = await entity_extractor.extract_top_entities(
+                    user_id=user.id,
+                    start_date=start_date,
+                    top_n=10,
+                )
+                if entity_series:
+                    emerging = []
+                    fading = []
+                    for key, series in entity_series.items():
+                        if series.length < 14:
+                            continue
+                        recent = sum(series.values[-7:])
+                        prev = sum(series.values[-14:-7])
+                        if prev > 0 and (recent - prev) / prev > 0.2:
+                            emerging.append(key)
+                        elif prev > 0 and (recent - prev) / prev < -0.2:
+                            fading.append(key)
+
+                    entity_summary = {
+                        "total_tracked": len(entity_series),
+                        "emerging_count": len(emerging),
+                        "fading_count": len(fading),
+                        "top_emerging": emerging[:3],
+                    }
+            except Exception:
+                pass
+
+            graph_summary = None
+            try:
+                connection_series = await connection_extractor.extract(
+                    user_id=user.id,
+                    start_date=start_date,
+                )
+                if activity.length >= 14 and connection_series.length >= 14:
+                    recent_nodes = sum(activity.values[-7:])
+                    prev_nodes = sum(activity.values[-14:-7])
+                    recent_edges = sum(connection_series.values[-7:])
+                    prev_edges = sum(connection_series.values[-14:-7])
+
+                    node_growth = (
+                        (recent_nodes - prev_nodes) / max(prev_nodes, 1)
+                        if prev_nodes > 0
+                        else 0.0
+                    )
+                    edge_growth = (
+                        (recent_edges - prev_edges) / max(prev_edges, 1)
+                        if prev_edges > 0
+                        else 0.0
+                    )
+                    if edge_growth > 0.1:
+                        density = "rising"
+                    elif edge_growth < -0.1:
+                        density = "declining"
+                    else:
+                        density = "stable"
+
+                    graph_summary = {
+                        "predicted_node_growth": round(node_growth, 3),
+                        "predicted_edge_growth": round(edge_growth, 3),
+                        "density_trend": density,
+                    }
+            except Exception:
+                pass
 
         has_data = activity.length > 0
 
@@ -645,9 +709,9 @@ def create_predictions_router(
             user_id=str(user.id),
             has_predictions=has_data,
             activity_summary=activity_summary,
-            entity_summary=None,
+            entity_summary=entity_summary,
             relationship_summary=relationship_summary,
-            graph_summary=None,
+            graph_summary=graph_summary,
             generated_at=datetime.utcnow().isoformat(),
         )
 
@@ -692,5 +756,71 @@ def create_predictions_router(
             )
 
         return results
+
+    @router.get("/accuracy")
+    async def get_forecast_accuracy(
+        user: User = Depends(auth_middleware.require_authentication),
+    ):
+        """Compute retrospective accuracy by comparing last week's forecast vs actuals."""
+        async with database.session() as session:
+            extractor = ActivityExtractor(session)
+
+            start_date = datetime.utcnow() - timedelta(days=21)
+            series = await extractor.extract(
+                user_id=user.id,
+                start_date=start_date,
+            )
+
+        if series.length < 14:
+            return {
+                "available": False,
+                "message": "Not enough historical data for accuracy measurement",
+            }
+
+        training = series.values[:-7]
+        actuals = series.values[-7:]
+
+        if not forecast_service.is_available:
+            forecast_service.initialize()
+
+        try:
+            forecast = forecast_service.forecast_activity(
+                daily_counts=training,
+                horizon=7,
+            )
+            predicted = forecast.point_forecast
+        except Exception:
+            return {"available": False, "message": "Forecast generation failed"}
+
+        errors = []
+        for pred, actual in zip(predicted, actuals):
+            if actual != 0:
+                errors.append(abs(pred - actual) / abs(actual))
+            elif pred == 0:
+                errors.append(0.0)
+            else:
+                errors.append(1.0)
+
+        mape = sum(errors) / len(errors) if errors else 0.0
+        mae = sum(abs(p - a) for p, a in zip(predicted, actuals)) / len(actuals)
+        accuracy = round(1 - min(mape, 1.0), 4)
+
+        within_band = 0
+        for i, actual in enumerate(actuals):
+            lower = forecast.lower_bound[i] if i < len(forecast.lower_bound) else 0
+            upper = forecast.upper_bound[i] if i < len(forecast.upper_bound) else float("inf")
+            if lower <= actual <= upper:
+                within_band += 1
+        coverage = round(within_band / len(actuals), 4)
+
+        return {
+            "available": True,
+            "accuracy": accuracy,
+            "mape": round(mape, 4),
+            "mae": round(mae, 4),
+            "coverage": coverage,
+            "sample_days": len(actuals),
+            "computed_at": datetime.utcnow().isoformat(),
+        }
 
     return router

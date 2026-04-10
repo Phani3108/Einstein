@@ -1,20 +1,25 @@
 """Prediction module for the Personal Semantic Engine.
 
-This package provides time-series forecasting capabilities using Google's TimesFM
-foundation model to predict knowledge graph evolution, entity emergence,
-relationship dynamics, and activity patterns.
+This package provides time-series forecasting to predict knowledge graph evolution,
+entity emergence, relationship dynamics, and activity patterns.
 
 All imports are lazy to avoid pulling in optional dependencies (numpy, torch,
-timesfm) at module load time — critical for serverless environments like Vercel
-where only base dependencies are installed.
+and related packages) at module load time — critical for serverless environments
+like Vercel where only base dependencies are installed.
 """
 
 
 def __getattr__(name: str):
     """Lazy-load prediction classes on first access."""
-    if name == "TimesFMService":
-        from .timesfm_service import TimesFMService
-        return TimesFMService
+    if name == "ForecastService":
+        from .forecast_service import ForecastService
+        return ForecastService
+    if name == "StatisticalForecastService":
+        from .forecast_service import StatisticalForecastService
+        return StatisticalForecastService
+    if name == "HFInferenceForecastService":
+        from .forecast_service import HFInferenceForecastService
+        return HFInferenceForecastService
     if name == "TimeSeriesExtractor":
         from .time_series_extractor import TimeSeriesExtractor
         return TimeSeriesExtractor
@@ -37,7 +42,9 @@ def __getattr__(name: str):
 
 
 __all__ = [
-    "TimesFMService",
+    "ForecastService",
+    "StatisticalForecastService",
+    "HFInferenceForecastService",
     "TimeSeriesExtractor",
     "ActivityExtractor",
     "EntityMentionExtractor",

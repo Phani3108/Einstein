@@ -493,14 +493,13 @@ export function BrainHome() {
               <div className="bh-prediction-content">
                 <h4 className="bh-prediction-title">Activity Outlook</h4>
                 <p className="bh-prediction-text">
-                  {state.predictionSummary?.activity_outlook
-                    || (state.predictionSummary?.activity_summary
-                      ? (state.predictionSummary.activity_summary.trend === "increasing"
-                          ? "Busy period ahead — activity is trending up"
-                          : state.predictionSummary.activity_summary.trend === "decreasing"
-                            ? "Quieter week ahead — activity is trending down"
-                            : "Steady pace expected — activity is stable")
-                      : "Gathering activity data...")}
+                  {state.predictionSummary?.activity_summary
+                    ? (state.predictionSummary.activity_summary.trend === "increasing"
+                        ? "Busy period ahead — activity is trending up"
+                        : state.predictionSummary.activity_summary.trend === "decreasing"
+                          ? "Quieter week ahead — activity is trending down"
+                          : "Steady pace expected — activity is stable")
+                    : "Gathering activity data..."}
                 </p>
               </div>
             </div>
@@ -512,16 +511,20 @@ export function BrainHome() {
               </div>
               <div className="bh-prediction-content">
                 <h4 className="bh-prediction-title">Emerging Topics</h4>
-                {state.predictionSummary?.emerging_topics && state.predictionSummary.emerging_topics.length > 0 ? (
+                {state.predictionSummary?.entity_summary && state.predictionSummary.entity_summary.top_emerging.length > 0 ? (
                   <div className="bh-emerging-list">
-                    {state.predictionSummary.emerging_topics.slice(0, 3).map((topic: any, i: number) => (
+                    {state.predictionSummary.entity_summary.top_emerging.slice(0, 3).map((name: string, i: number) => (
                       <span key={i} className="bh-emerging-item">
-                        <span className={`bh-trend-arrow ${topic.trend === "rising" ? "bh-trend-up" : topic.trend === "declining" ? "bh-trend-down" : ""}`}>
-                          {topic.trend === "rising" ? "\u2191" : topic.trend === "declining" ? "\u2193" : "\u2192"}
-                        </span>
-                        {topic.entity}
+                        <span className="bh-trend-arrow bh-trend-up">{"\u2191"}</span>
+                        {name.includes(":") ? name.split(":")[1] : name}
                       </span>
                     ))}
+                    {state.predictionSummary.entity_summary.fading_count > 0 && (
+                      <span className="bh-emerging-item">
+                        <span className="bh-trend-arrow bh-trend-down">{"\u2193"}</span>
+                        {state.predictionSummary.entity_summary.fading_count} fading
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <p className="bh-prediction-text">No emerging topics yet</p>
@@ -553,7 +556,7 @@ export function BrainHome() {
                       >
                         <span className={`bh-risk-dot bh-risk-${entry.risk_level}`} />
                         <span className="bh-dormancy-name">{entry.name}</span>
-                        <span className="bh-dormancy-days">{entry.predicted_days_until_dormant}d left</span>
+                        <span className="bh-dormancy-days">{entry.days_until_dormant}d left</span>
                       </button>
                     ))}
                   </div>

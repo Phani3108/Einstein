@@ -134,9 +134,30 @@ export interface CalendarEventState {
 /* ------------------------------------------------------------------ */
 
 export interface PredictionSummary {
-  activity_outlook: string;
-  emerging_topics: { entity: string; trend: "rising" | "stable" | "declining"; mentions: number }[];
-  graph_stats: { predicted_new_nodes: number; predicted_new_edges: number; growth_rate: number };
+  has_predictions: boolean;
+  activity_summary: {
+    recent_average: number;
+    change_from_previous: number;
+    data_points: number;
+    trend: "increasing" | "decreasing" | "stable";
+  } | null;
+  entity_summary: {
+    total_tracked: number;
+    emerging_count: number;
+    fading_count: number;
+    top_emerging: string[];
+  } | null;
+  relationship_summary: {
+    people_at_risk: number;
+    projects_at_risk: number;
+    most_urgent: string | null;
+    urgent_days_left: number | null;
+  } | null;
+  graph_summary: {
+    predicted_node_growth: number;
+    predicted_edge_growth: number;
+    density_trend: string;
+  } | null;
   generated_at: string;
 }
 
@@ -144,9 +165,9 @@ export interface DormancyRiskEntry {
   id: string;
   name: string;
   type: "person" | "project";
-  days_since_contact: number;
-  predicted_days_until_dormant: number;
-  risk_level: "low" | "medium" | "high";
+  dormancy_days: number;
+  days_until_dormant: number;
+  risk_level: "low" | "medium" | "high" | "critical";
   last_activity: string | null;
 }
 
