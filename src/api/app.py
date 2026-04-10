@@ -342,6 +342,18 @@ def create_app() -> FastAPI:
     # Webhook ingestion routes (Phase 1A)
     app.include_router(webhook_router)
 
+    # ── Dev seed endpoint ────────────────────────────────────────
+    @app.post("/api/v1/dev/seed", tags=["dev"])
+    async def seed_mock_data():
+        """Trigger mock-data seeding (idempotent)."""
+        try:
+            from scripts.seed_mock_data import seed
+            await seed()
+            return {"status": "ok", "message": "Mock data seeded successfully"}
+        except Exception as exc:
+            import traceback
+            return {"status": "error", "message": str(exc), "traceback": traceback.format_exc()}
+
     # Prediction routes — lazy import so optional
     # dependencies never crash the app on startup
     try:

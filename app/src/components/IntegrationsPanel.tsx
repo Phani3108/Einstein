@@ -17,6 +17,8 @@ import {
   ExternalLink,
   Shield,
   Loader,
+  Send,
+  Calendar,
 } from "lucide-react";
 import { api } from "../lib/api";
 import type { LucideIcon } from "lucide-react";
@@ -33,13 +35,15 @@ interface ProviderInfo {
 }
 
 const PROVIDERS: Record<string, ProviderInfo> = {
-  gmail:   { name: "Gmail",   icon: Mail,          color: "#EA4335", description: "Auto-capture emails" },
-  outlook: { name: "Outlook", icon: Mail,          color: "#0078D4", description: "Microsoft email sync" },
-  slack:   { name: "Slack",   icon: MessageSquare, color: "#4A154B", description: "Channel messages" },
-  jira:    { name: "Jira",    icon: CheckSquare,   color: "#0052CC", description: "Issue tracking" },
-  github:  { name: "GitHub",  icon: GitBranch,     color: "#333",    description: "PRs, issues, reviews" },
-  zoom:    { name: "Zoom",    icon: Video,         color: "#2D8CFF", description: "Meeting transcripts" },
-  linear:  { name: "Linear",  icon: Target,        color: "#5E6AD2", description: "Project tracking" },
+  gmail:    { name: "Gmail",           icon: Mail,          color: "#EA4335", description: "Auto-capture emails" },
+  outlook:  { name: "Outlook",        icon: Mail,          color: "#0078D4", description: "Microsoft email sync" },
+  slack:    { name: "Slack",          icon: MessageSquare, color: "#4A154B", description: "Channel messages" },
+  jira:     { name: "Jira",           icon: CheckSquare,   color: "#0052CC", description: "Issue tracking" },
+  github:   { name: "GitHub",         icon: GitBranch,     color: "#333",    description: "PRs, issues, reviews" },
+  zoom:     { name: "Zoom",           icon: Video,         color: "#2D8CFF", description: "Meeting transcripts" },
+  linear:   { name: "Linear",         icon: Target,        color: "#5E6AD2", description: "Project tracking" },
+  telegram: { name: "Telegram",       icon: Send,          color: "#229ED9", description: "Bot messages & channels" },
+  gcal:     { name: "Google Calendar", icon: Calendar,     color: "#4285F4", description: "Requires Gmail connection" },
 };
 
 /* ------------------------------------------------------------------ */
@@ -48,8 +52,8 @@ const PROVIDERS: Record<string, ProviderInfo> = {
 
 interface IntegrationStatus {
   provider: string;
-  connected: boolean;
-  last_sync?: string;
+  is_active: boolean;
+  last_sync_at?: string;
   scopes?: string[];
 }
 
@@ -64,11 +68,14 @@ interface PrivacySettings {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
+const NON_OAUTH_PROVIDERS = new Set(["telegram", "gcal"]);
+
 export function IntegrationsPanel() {
   const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
   const [syncingProvider, setSyncingProvider] = useState<string | null>(null);
+  const [botTokenInput, setBotTokenInput] = useState("");
   const [privacy, setPrivacy] = useState<PrivacySettings>({
     emailBodySync: false,
     slackChannels: "",
@@ -104,8 +111,8 @@ export function IntegrationsPanel() {
     setConnectingProvider(provider);
     try {
       const result = await api.connectIntegration(provider);
-      if (result && (result as any).oauth_url) {
-        window.open((result as any).oauth_url, "_blank", "noopener");
+      if (result && (result as any).authorize_url) {
+        window.open((result as any).authorize_url, "_blank", "noopener");
       }
       // Refresh statuses after a short delay (OAuth redirect takes time)
       setTimeout(() => {
@@ -125,7 +132,7 @@ export function IntegrationsPanel() {
       await api.disconnectIntegration(provider);
       setIntegrations((prev) =>
         prev.map((i) =>
-          i.provider === provider ? { ...i, connected: false, last_sync: undefined } : i
+          i.provider === provider ? { ...i, is_active: false, last_sync_at: undefined } : i
         )
       );
     } catch (err) {
@@ -180,7 +187,7 @@ export function IntegrationsPanel() {
           <div className="ip-grid">
             {Object.entries(PROVIDERS).map(([key, provider]) => {
               const status = getStatus(key);
-              const isConnected = status?.connected ?? false;
+              const isConnected = status?.is_active ?? false;
               const isConnecting = connectingProvider === key;
               const isSyncing = syncingProvider === key;
               const Icon = provider.icon;
@@ -201,9 +208,9 @@ export function IntegrationsPanel() {
                     <span className={`ip-badge ${isConnected ? "ip-badge--connected" : "ip-badge--disconnected"}`}>
                       {isConnected ? "Connected" : "Not connected"}
                     </span>
-                    {isConnected && status?.last_sync && (
+                    {isConnected && status?.last_sync_at && (
                       <span className="ip-last-sync">
-                        Synced {formatLastSync(status.last_sync)}
+                        Synced {formatLastSync(status.last_sync_at)}
                       </span>
                     )}
                   </div>
@@ -227,6 +234,30 @@ export function IntegrationsPanel() {
                           Disconnect
                         </button>
                       </>
+                    ) : key === "gcal" ? (
+                      <span className="ip-hint">Connect Gmail first to enable</span>
+                    ) : key === "telegram" ? (
+                      <div className="ip-bot-token">
+                        <input
+                          type="text"
+                          className="ip-field-input ip-token-input"
+                          placeholder="Bot token from @BotFather"
+                          value={botTokenInput}
+                          onChange={(e) => setBotTokenInput(e.target.value)}
+                        />
+                        <button
+                          className="ip-btn ip-btn--connect"
+                          onClick={() => {
+                            if (botTokenInput.trim()) {
+                              handleConnect("telegram");
+                              setBotTokenInput("");
+                            }
+                          }}
+                          disabled={!botTokenInput.trim() || isConnecting}
+                        >
+                          {isConnecting ? <Loader size={14} className="ip-spinner" /> : "Save"}
+                        </button>
+                      </div>
                     ) : (
                       <button
                         className="ip-btn ip-btn--connect"
@@ -527,6 +558,24 @@ export function IntegrationsPanel() {
         }
         .ip-field-input::placeholder {
           color: var(--text-muted, #52525b);
+        }
+
+        /* Telegram bot token row */
+        .ip-bot-token {
+          display: flex;
+          gap: 6px;
+          width: 100%;
+        }
+        .ip-token-input {
+          flex: 1;
+          padding: 6px 8px !important;
+          font-size: 12px !important;
+          min-width: 0;
+        }
+        .ip-hint {
+          font-size: 11px;
+          color: var(--text-muted, #71717a);
+          font-style: italic;
         }
       `}</style>
     </div>

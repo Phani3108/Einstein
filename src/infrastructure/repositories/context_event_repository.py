@@ -17,6 +17,7 @@ from src.infrastructure.database.models import (
     ProjectModel,
     CommitmentModel,
     ResurfacingLogModel,
+    IntegrationCredentialModel,
 )
 
 
@@ -349,3 +350,132 @@ class ContextEventRepository:
             )
             await session.execute(stmt)
             await session.commit()
+
+    # ── Integration credential helpers ──────────────────────────
+
+    async def get_integration_credentials(self, user_id: UUID) -> list[dict]:
+        """Return all integration credentials for a user."""
+        async with self._database.session() as session:
+            result = await session.execute(
+                select(IntegrationCredentialModel).where(
+                    IntegrationCredentialModel.user_id == user_id
+                )
+            )
+            rows = result.scalars().all()
+            return [
+                {
+                    "id": str(r.id),
+                    "provider": r.provider,
+                    "is_active": r.is_active,
+                    "last_sync_at": r.last_sync_at.isoformat() if r.last_sync_at else None,
+                    "scopes": r.scopes or [],
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ]
+
+    async def get_integration_credential(self, user_id: UUID, provider: str) -> dict | None:
+        """Return a single credential by user+provider, or None."""
+        async with self._database.session() as session:
+            result = await session.execute(
+                select(IntegrationCredentialModel).where(
+                    IntegrationCredentialModel.user_id == user_id,
+                    IntegrationCredentialModel.provider == provider,
+                )
+            )
+            r = result.scalar_one_or_none()
+            if not r:
+                return None
+            return {
+                "id": str(r.id),
+                "provider": r.provider,
+                "access_token": r.access_token,
+                "refresh_token": r.refresh_token,
+                "token_expiry": r.token_expiry.isoformat() if r.token_expiry else None,
+                "is_active": r.is_active,
+                "last_sync_at": r.last_sync_at.isoformat() if r.last_sync_at else None,
+                "scopes": r.scopes or [],
+                "integration_metadata": r.integration_metadata or {},
+                "sync_cursor": r.sync_cursor,
+            }
+
+    async def upsert_integration_credential(
+        self,
+        user_id: UUID,
+        provider: str,
+        access_token: str,
+        refresh_token: str | None = None,
+        token_expiry: datetime | None = None,
+        scopes: list[str] | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        """Insert or update an integration credential."""
+        async with self._database.session() as session:
+            existing = await session.execute(
+                select(IntegrationCredentialModel).where(
+                    IntegrationCredentialModel.user_id == user_id,
+                    IntegrationCredentialModel.provider == provider,
+                )
+            )
+            row = existing.scalar_one_or_none()
+            if row:
+                row.access_token = access_token
+                if refresh_token is not None:
+                    row.refresh_token = refresh_token
+                if token_expiry is not None:
+                    row.token_expiry = token_expiry
+                if scopes is not None:
+                    row.scopes = scopes
+                if metadata is not None:
+                    row.integration_metadata = metadata
+                row.is_active = True
+                row.updated_at = datetime.now()
+            else:
+                session.add(IntegrationCredentialModel(
+                    user_id=user_id,
+                    provider=provider,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    token_expiry=token_expiry,
+                    scopes=scopes or [],
+                    integration_metadata=metadata or {},
+                    is_active=True,
+                ))
+            await session.commit()
+
+    async def deactivate_integration(self, user_id: UUID, provider: str) -> None:
+        """Soft-delete: set is_active=False."""
+        async with self._database.session() as session:
+            result = await session.execute(
+                select(IntegrationCredentialModel).where(
+                    IntegrationCredentialModel.user_id == user_id,
+                    IntegrationCredentialModel.provider == provider,
+                )
+            )
+            row = result.scalar_one_or_none()
+            if row:
+                row.is_active = False
+                row.updated_at = datetime.now()
+                await session.commit()
+
+    async def update_sync_cursor(
+        self,
+        user_id: UUID,
+        provider: str,
+        cursor: str | None,
+        last_sync_at: datetime | None = None,
+    ) -> None:
+        """Update the sync cursor and last_sync_at for an integration."""
+        async with self._database.session() as session:
+            result = await session.execute(
+                select(IntegrationCredentialModel).where(
+                    IntegrationCredentialModel.user_id == user_id,
+                    IntegrationCredentialModel.provider == provider,
+                )
+            )
+            row = result.scalar_one_or_none()
+            if row:
+                row.sync_cursor = cursor
+                row.last_sync_at = last_sync_at or datetime.now()
+                row.updated_at = datetime.now()
+                await session.commit()

@@ -11,6 +11,10 @@ PROVIDER_CONFIG: Dict[str, Dict[str, str]] = {
         "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
         "token_url": "https://oauth2.googleapis.com/token",
     },
+    "outlook": {
+        "authorize_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+        "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    },
     "jira": {
         "authorize_url": "https://auth.atlassian.com/authorize",
         "token_url": "https://auth.atlassian.com/oauth/token",

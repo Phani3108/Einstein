@@ -688,7 +688,7 @@ export const api = {
   connectIntegration: (provider: string, redirectUri?: string): Promise<any> =>
     request<any>(`${CLOUD_API}/api/v1/integrations/connect`, {
       method: "POST",
-      body: JSON.stringify({ provider, redirect_uri: redirectUri || window.location.origin + '/integrations/callback' }),
+      body: JSON.stringify({ provider, redirect_uri: redirectUri || `${CLOUD_API}/api/v1/integrations/callback/${provider}` }),
     }),
   listIntegrations: (): Promise<any[]> =>
     request<any[]>(`${CLOUD_API}/api/v1/integrations`),
