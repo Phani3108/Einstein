@@ -180,6 +180,11 @@ async def init_database():
         from src.infrastructure.database.models import Base
         from src.container import container
         db = container.db()
+
+        if db.is_sqlite:
+            from src.infrastructure.database.connection import register_sqlite_adapters
+            register_sqlite_adapters()
+
         async with db.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         return {"status": "ok", "message": "Database tables created successfully"}

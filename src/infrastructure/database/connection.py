@@ -57,3 +57,36 @@ class Database:
             raise
         finally:
             await session.close()
+
+
+_sqlite_adapters_registered = False
+
+
+def register_sqlite_adapters():
+    """Register compile-time adapters so JSONB/ARRAY/UUID render as SQLite types.
+    Safe to call multiple times — only registers once."""
+    global _sqlite_adapters_registered
+    if _sqlite_adapters_registered:
+        return
+    _sqlite_adapters_registered = True
+
+    from sqlalchemy.ext.compiler import compiles
+    from sqlalchemy.dialects.postgresql import JSONB, ARRAY
+    from sqlalchemy import JSON
+
+    try:
+        from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+
+        @compiles(PG_UUID, "sqlite")
+        def _uuid_to_char(element, compiler, **kw):
+            return "VARCHAR(36)"
+    except ImportError:
+        pass
+
+    @compiles(JSONB, "sqlite")
+    def _jsonb_to_json(element, compiler, **kw):
+        return "JSON"
+
+    @compiles(ARRAY, "sqlite")
+    def _array_to_json(element, compiler, **kw):
+        return "JSON"

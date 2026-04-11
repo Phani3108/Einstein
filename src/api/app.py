@@ -60,13 +60,17 @@ def create_app() -> FastAPI:
         db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     elif db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    # asyncpg doesn't understand sslmode — strip it and let
-    # connection.py handle SSL via connect_args instead
-    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-    _parsed = urlparse(db_url)
-    _qs = parse_qs(_parsed.query)
-    _qs.pop("sslmode", None)
-    db_url = urlunparse(_parsed._replace(query=urlencode(_qs, doseq=True)))
+    # asyncpg doesn't understand sslmode — strip it (only for PostgreSQL URLs;
+    # urlunparse corrupts the triple-slash in sqlite:///path URLs)
+    if "postgresql" in db_url:
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        _parsed = urlparse(db_url)
+        _qs = parse_qs(_parsed.query)
+        _qs.pop("sslmode", None)
+        db_url = urlunparse(_parsed._replace(query=urlencode(_qs, doseq=True)))
+    if "sqlite" in db_url:
+        from src.infrastructure.database.connection import register_sqlite_adapters
+        register_sqlite_adapters()
     container.config.from_dict(
         {
             "db": {
@@ -503,14 +507,15 @@ def create_app() -> FastAPI:
 # Create app instance for uvicorn
 try:
     app = create_app()
-except Exception as _startup_exc:
+except Exception as _exc:
     import logging as _log
-    _log.getLogger(__name__).error("create_app() failed: %s", _startup_exc, exc_info=True)
+    _startup_error_msg = str(_exc)
+    _log.getLogger(__name__).error("create_app() failed: %s", _startup_error_msg, exc_info=True)
 
     _fallback = FastAPI(title="Einstein — startup error")
 
     @_fallback.get("/{path:path}")
     async def _diag(path: str = ""):
-        return {"error": "app_startup_failed", "message": str(_startup_exc)}
+        return {"error": "app_startup_failed", "message": _startup_error_msg}
 
     app = _fallback
