@@ -29,6 +29,7 @@ import { RAGPanel } from "./components/RAGPanel";
 import { MeetingsPanel } from "./components/MeetingsPanel";
 import { ActionItemsDashboard } from "./components/ActionItemsDashboard";
 import { IntegrationsPanel } from "./components/IntegrationsPanel";
+import { GettingStartedPanel } from "./components/GettingStartedPanel";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { NoteNameModal } from "./components/NoteNameModal";
 import { FloatingVoiceButton } from "./components/VoiceInput";
@@ -220,6 +221,8 @@ function App() {
         return <ErrorBoundary name="MainContent"><IntegrationsPanel /></ErrorBoundary>;
       case "contexthub":
         return <ErrorBoundary name="MainContent"><BrainHome /></ErrorBoundary>;
+      case "getting-started":
+        return <ErrorBoundary name="MainContent"><GettingStartedPanel /></ErrorBoundary>;
       default:
         return <ErrorBoundary name="MainContent"><Editor /></ErrorBoundary>;
     }

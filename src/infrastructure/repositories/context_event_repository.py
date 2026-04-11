@@ -6,7 +6,10 @@ from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import select, and_, desc, func, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+try:
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+except ImportError:
+    pg_insert = None
 
 from src.domain.entities.context_event import ContextEvent, Connection, PersonProfile, Project, Commitment
 from src.infrastructure.database.connection import Database
@@ -32,11 +35,11 @@ class ContextEventRepository:
     async def ingest_batch(self, events: List[ContextEvent]) -> int:
         """Insert a batch of context events, skipping duplicates on (user_id, source, source_id)."""
         inserted = 0
+        is_sqlite = getattr(self._database, "is_sqlite", False)
         async with self._database.session() as session:
             for event in events:
                 model = ContextEventModel.from_domain(event)
-                # Use upsert to handle dedup
-                if event.source_id:
+                if event.source_id and not is_sqlite and pg_insert is not None:
                     stmt = pg_insert(ContextEventModel).values(
                         id=model.id,
                         user_id=model.user_id,
@@ -55,6 +58,19 @@ class ContextEventRepository:
                     )
                     result = await session.execute(stmt)
                     if result.rowcount > 0:
+                        inserted += 1
+                elif event.source_id and is_sqlite:
+                    existing = await session.execute(
+                        select(ContextEventModel).where(
+                            and_(
+                                ContextEventModel.user_id == model.user_id,
+                                ContextEventModel.source == model.source,
+                                ContextEventModel.source_id == model.source_id,
+                            )
+                        )
+                    )
+                    if not existing.scalar_one_or_none():
+                        session.add(model)
                         inserted += 1
                 else:
                     session.add(model)
@@ -156,11 +172,8 @@ class ContextEventRepository:
         until: Optional[datetime] = None,
         limit: int = 200,
     ) -> List[ContextEvent]:
-        """Flexible event query used by intelligence workers.
-
-        Supports filtering by event type, source, mentioned people,
-        topics, and date range.
-        """
+        """Flexible event query used by intelligence workers."""
+        is_sqlite = getattr(self._database, "is_sqlite", False)
         async with self._database.session() as session:
             stmt = select(ContextEventModel).where(
                 ContextEventModel.user_id == user_id
@@ -169,14 +182,22 @@ class ContextEventRepository:
                 stmt = stmt.where(ContextEventModel.event_type.in_(event_types))
             if sources:
                 stmt = stmt.where(ContextEventModel.source.in_(sources))
-            if person_name:
+            if person_name and not is_sqlite:
                 stmt = stmt.where(
                     ContextEventModel.extracted_people.any(person_name)
                 )
-            if topics:
+            elif person_name and is_sqlite:
+                stmt = stmt.where(
+                    ContextEventModel.extracted_people.like(f'%{person_name}%')
+                )
+            if topics and not is_sqlite:
                 stmt = stmt.where(
                     ContextEventModel.topics.overlap(topics)
                 )
+            elif topics and is_sqlite:
+                from sqlalchemy import or_
+                topic_conditions = [ContextEventModel.topics.like(f'%{t}%') for t in topics]
+                stmt = stmt.where(or_(*topic_conditions))
             if since:
                 stmt = stmt.where(ContextEventModel.timestamp >= since)
             if until:

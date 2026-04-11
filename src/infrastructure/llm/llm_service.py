@@ -69,6 +69,11 @@ class LLMService:
             elif "deepseek" in self.model:
                 os.environ["DEEPSEEK_API_KEY"] = api_key
 
+        # Ollama local model support
+        if self.model and self.model.startswith("ollama/"):
+            ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+            os.environ["OLLAMA_API_BASE"] = ollama_base
+
     async def generate(
         self,
         prompt: str,

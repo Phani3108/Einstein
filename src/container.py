@@ -26,7 +26,7 @@ from src.infrastructure.repositories.context_event_repository import (
     ContextEventRepository,
 )
 from src.infrastructure.repositories.vault_repository import VaultRepository
-from src.infrastructure.services.embedding_service import OpenAIEmbeddingService
+from src.infrastructure.services.embedding_service import OpenAIEmbeddingService, OllamaEmbeddingService
 from src.infrastructure.services.vector_store_service import PineconeVectorStore
 from src.infrastructure.services.authentication_service import JWTAuthenticationService
 from src.infrastructure.services.user_management_service import DefaultUserManagementService
@@ -89,8 +89,10 @@ class Container(containers.DeclarativeContainer):
     )
 
     embedding_service = providers.Singleton(
-        OpenAIEmbeddingService,
-        api_key=os.getenv("OPENAI_API_KEY"),
+        OllamaEmbeddingService if os.getenv("EMBEDDING_PROVIDER", "").lower() == "ollama" else OpenAIEmbeddingService,
+        **({"base_url": os.getenv("OLLAMA_BASE_URL"), "model": os.getenv("EMBEDDING_MODEL", "nomic-embed-text")}
+           if os.getenv("EMBEDDING_PROVIDER", "").lower() == "ollama"
+           else {"api_key": os.getenv("OPENAI_API_KEY")}),
     )
 
     vector_store_service = providers.Singleton(

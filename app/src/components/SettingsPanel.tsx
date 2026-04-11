@@ -22,6 +22,8 @@ import {
   GitBranch,
   Link,
   FolderOpen,
+  RefreshCw,
+  Cpu,
 } from "lucide-react";
 import { getCloudSwitchingInfo } from "../lib/features";
 import type { ConnectionMode } from "../lib/features";
@@ -44,6 +46,10 @@ export function SettingsPanel() {
   const [templateCount, setTemplateCount] = useState(0);
   const [currentLang, setCurrentLang] = useState<Language>("en");
   const [currentTheme, setCurrentTheme] = useState<"dark" | "light" | "warm">("dark");
+  const [llmProvider, setLlmProvider] = useState<string>("");
+  const [llmModel, setLlmModel] = useState<string>("");
+  const [ollamaModels, setOllamaModels] = useState<any[]>([]);
+  const [llmTestResult, setLlmTestResult] = useState<string>("");
 
   const targetMode: ConnectionMode = state.connectionMode === "local" ? "cloud" : "local";
   const switchInfo = getCloudSwitchingInfo(state.connectionMode);
@@ -67,6 +73,18 @@ export function SettingsPanel() {
     }).catch(() => {});
     api.getConfig("theme").then((th) => {
       if (th) setCurrentTheme(th as "dark" | "light" | "warm");
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.getSetupConfig().then(cfg => {
+      setLlmProvider(cfg.llm_provider || "");
+      setLlmModel(cfg.llm_model || "");
+      if (cfg.llm_provider === "ollama") {
+        api.getOllamaModels().then(res => {
+          if (res.status === "ok") setOllamaModels(res.models || []);
+        }).catch(() => {});
+      }
     }).catch(() => {});
   }, []);
 
@@ -568,6 +586,104 @@ export function SettingsPanel() {
                 <p>
                   Your notes stay local -- the AI processes everything on your machine.
                 </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── LLM Provider ── */}
+        <div className="settings-section">
+          <h3>
+            <Cpu size={16} /> LLM Provider
+          </h3>
+          <div
+            style={{
+              background: "var(--bg-secondary, #1e1e2e)",
+              borderRadius: 8,
+              padding: 16,
+              border: "1px solid var(--border-color, #2a2a3e)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 500, fontSize: 14 }}>
+                  Provider: <span style={{ color: "var(--accent-color, #7c5bf0)" }}>{llmProvider || "Not configured"}</span>
+                </div>
+                <div style={{ fontSize: 13, opacity: 0.7, marginTop: 2 }}>
+                  Model: <span style={{ color: "#60a5fa" }}>{llmModel || "Not set"}</span>
+                </div>
+              </div>
+            </div>
+            {llmProvider === "ollama" && ollamaModels.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 4 }}>Installed Ollama models:</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {ollamaModels.map((m: any) => (
+                    <span
+                      key={m.name}
+                      style={{
+                        fontSize: 11,
+                        padding: "2px 8px",
+                        borderRadius: 10,
+                        background: "rgba(34, 197, 94, 0.12)",
+                        color: "#22c55e",
+                      }}
+                    >
+                      {m.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <button
+                className="btn-secondary"
+                style={{ fontSize: 12, padding: "5px 12px", display: "flex", alignItems: "center", gap: 4 }}
+                onClick={async () => {
+                  setLlmTestResult("Testing...");
+                  try {
+                    const res = await api.testLLM();
+                    setLlmTestResult(res.status === "ok" ? `Connected: ${res.response?.slice(0, 80)}` : `Error: ${res.message}`);
+                  } catch (e: any) {
+                    setLlmTestResult(`Failed: ${e.message}`);
+                  }
+                }}
+              >
+                <Brain size={12} /> Test LLM
+              </button>
+              <button
+                className="btn-secondary"
+                style={{ fontSize: 12, padding: "5px 12px", display: "flex", alignItems: "center", gap: 4 }}
+                onClick={() => {
+                  api.getSetupConfig().then(cfg => {
+                    setLlmProvider(cfg.llm_provider || "");
+                    setLlmModel(cfg.llm_model || "");
+                    if (cfg.llm_provider === "ollama") {
+                      api.getOllamaModels().then(res => {
+                        if (res.status === "ok") setOllamaModels(res.models || []);
+                      }).catch(() => {});
+                    }
+                  }).catch(() => {});
+                }}
+              >
+                <RefreshCw size={12} /> Refresh
+              </button>
+            </div>
+            {llmTestResult && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#94a3b8",
+                  padding: "6px 10px",
+                  background: "#0f172a",
+                  borderRadius: 4,
+                  wordBreak: "break-word",
+                }}
+              >
+                {llmTestResult}
               </div>
             )}
           </div>

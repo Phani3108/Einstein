@@ -788,4 +788,20 @@ export const api = {
 
   getForecastAccuracy: (): Promise<any> =>
     request<any>(`${CLOUD_API}/api/v1/predictions/accuracy`),
+
+  // ─── Setup & Getting Started ───────────────────────
+  getSetupStatus: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/setup/status`),
+
+  getSetupConfig: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/setup/config`),
+
+  testLLM: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/setup/test-llm`, { method: "POST" }),
+
+  initDatabase: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/setup/init-db`, { method: "POST" }),
+
+  getOllamaModels: (): Promise<any> =>
+    request<any>(`${CLOUD_API}/api/v1/setup/ollama/models`),
 };

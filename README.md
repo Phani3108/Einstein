@@ -105,71 +105,72 @@ Einstein captures context from every tool you use — email, Slack, GitHub, Jira
 
 ## Getting Started
 
-### Prerequisites
+Einstein supports two modes: **Local** (everything on your machine) and **Cloud** (managed services). The in-app **Getting Started** wizard walks you through either path with live status checks.
 
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL 13+
-- Redis (for background workers)
-
-### 1. Clone & install
+### Quick Start: Local (free, private, offline)
 
 ```bash
+# 1. Clone & install
 git clone https://github.com/Phani3108/Einstein.git
 cd Einstein
+pip install -e '.[local]'
 
-# Backend
+# 2. Install Ollama (local AI) — https://ollama.com
+ollama pull llama3.2
+ollama pull nomic-embed-text
+
+# 3. Configure
+cat > .env << 'EOF'
+DATABASE_URL=sqlite+aiosqlite:///einstein.db
+LLM_MODEL=ollama/llama3.2
+OLLAMA_BASE_URL=http://localhost:11434
+EMBEDDING_PROVIDER=ollama
+EMBEDDING_MODEL=nomic-embed-text
+EOF
+
+# 4. Start
+uvicorn src.api.app:app --reload --port 8000
+
+# 5. Frontend (new terminal)
+cd app && npm install && npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) — click **Getting Started** in the sidebar.
+
+### Quick Start: Cloud
+
+```bash
+# 1. Clone & install
+git clone https://github.com/Phani3108/Einstein.git
+cd Einstein
 pip install -e .
-
-# Frontend
 cd app && npm install && cd ..
-```
 
-### 2. Configure environment
-
-```bash
+# 2. Configure
 cp .env.example .env
-```
+# Edit .env with your credentials:
+#   DATABASE_URL=postgresql+asyncpg://user:pass@host/dbname
+#   OPENAI_API_KEY=sk-...
+#   LLM_MODEL=gpt-4
 
-Set these in `.env`:
-
-```
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost/einstein
-OPENAI_API_KEY=sk-...
-PINECONE_API_KEY=...
-REDIS_URL=redis://localhost:6379
-```
-
-### 3. Initialize the database
-
-```bash
+# 3. Initialize & run
 python scripts/init_db.py
-alembic upgrade head
+uvicorn src.api.app:app --reload
+cd app && npm run dev
 ```
 
-### 4. Seed mock data (optional)
+### Prerequisites
 
-```bash
-python scripts/seed_mock_data.py
-```
+| Mode | Requirements |
+|------|-------------|
+| **Local** | Python 3.11+, Node.js 18+, [Ollama](https://ollama.com) |
+| **Cloud** | Python 3.11+, Node.js 18+, PostgreSQL, OpenAI API key |
 
-Or via API after starting the server:
+### Seed Sample Data (optional)
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/dev/seed
 ```
-
-### 5. Run
-
-```bash
-# Backend
-uvicorn src.api.app:app --reload
-
-# Frontend (separate terminal)
-cd app && npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 

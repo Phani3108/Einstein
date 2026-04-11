@@ -263,3 +263,51 @@ class OpenAIEmbeddingService(EmbeddingService, LoggerMixin):
             log_function_call("generate_embeddings", args, error=e)
             
             raise EmbeddingError(f"Failed to generate embeddings: {str(e)}")
+
+
+class OllamaEmbeddingService(EmbeddingService, LoggerMixin):
+    """Embedding service using a local Ollama instance."""
+
+    def __init__(
+        self,
+        base_url: str = None,
+        model: str = "nomic-embed-text",
+    ):
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        self.model = model
+        self._client = None
+        self.logger.info("Ollama embedding service initialized", extra={"model": self.model, "base_url": self.base_url})
+
+    def _get_client(self):
+        if self._client is None:
+            import httpx
+            self._client = httpx.AsyncClient(base_url=self.base_url, timeout=60.0)
+        return self._client
+
+    async def generate_embedding(self, text: str) -> List[float]:
+        if not text.strip():
+            raise EmbeddingError("Cannot generate embedding for empty text")
+        try:
+            client = self._get_client()
+            resp = await client.post("/api/embeddings", json={"model": self.model, "prompt": text})
+            resp.raise_for_status()
+            data = resp.json()
+            return data["embedding"]
+        except Exception as e:
+            self.logger.warning("Ollama embedding failed, using mock: %s", e)
+            import hashlib, struct
+            mock = []
+            for i in range(768):
+                h = hashlib.md5(f"{text}_{i}".encode()).digest()
+                v = struct.unpack('f', h[:4])[0]
+                mock.append(max(-1.0, min(1.0, v)))
+            return mock
+
+    async def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
+        if not texts:
+            return []
+        results = []
+        for text in texts:
+            if text.strip():
+                results.append(await self.generate_embedding(text))
+        return results

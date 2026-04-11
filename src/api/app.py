@@ -24,6 +24,7 @@ from src.api.routes.distillation import create_distillation_router
 from src.api.routes.ai_tools import create_ai_tools_router
 from src.api.routes.vault import create_vault_router
 from src.api.routes.integrations import create_integrations_router
+from src.api.routes.setup import router as setup_router
 from src.api.routes.actions import create_actions_router
 from src.api.routes.intelligence import create_intelligence_router
 from src.infrastructure.connectors.webhook_router import create_webhook_router
@@ -53,7 +54,7 @@ def create_app() -> FastAPI:
     # Configure container
     db_url = os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://nyn@localhost:5432/einstein",
+        "sqlite+aiosqlite:///einstein.db",
     )
     if db_url.startswith("postgresql://"):
         db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
@@ -268,6 +269,9 @@ def create_app() -> FastAPI:
         auth_middleware=container.auth_middleware(),
     )
     app.include_router(timeline_router)
+
+    # Setup routes (no auth required)
+    app.include_router(setup_router)
 
     # Include admin router
     app.include_router(admin_router)

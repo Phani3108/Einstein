@@ -22,6 +22,7 @@ import {
   Video,
   CheckSquare,
   Sparkles,
+  Rocket,
 } from "lucide-react";
 import { useApp } from "../lib/store";
 import { useTranslation } from "../lib/i18n";
@@ -42,6 +43,7 @@ interface NavItem {
 function useNavItems(dispatch: React.Dispatch<import("../lib/store").AppAction>): NavItem[] {
   const { t } = useTranslation();
   return useMemo(() => [
+    { icon: <Rocket size={16} />, title: "Getting Started", view: "getting-started" as SidebarView },
     // Core
     { icon: <Home size={16} />, title: "Home", view: "contexthub" as SidebarView, action: () => {
       dispatch({ type: "SET_CONTEXT_MODE", mode: { type: "home" } });
