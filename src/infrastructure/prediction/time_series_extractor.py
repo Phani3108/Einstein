@@ -777,7 +777,6 @@ class ProfileMetricsExtractor(TimeSeriesExtractor):
             and_(
                 PersonProfileModel.user_id == user_id,
                 PersonProfileModel.dormancy_days >= dormancy_threshold_days // 2,
-                PersonProfileModel.dormancy_days < dormancy_threshold_days,
             )
         )
         people_result = await self._session.execute(people_stmt)
@@ -791,14 +790,14 @@ class ProfileMetricsExtractor(TimeSeriesExtractor):
                 "dormancy_days": person.dormancy_days,
                 "freshness_score": person.freshness_score,
                 "last_seen": person.last_seen.isoformat() if person.last_seen else None,
-                "days_until_dormant": dormancy_threshold_days - person.dormancy_days,
+                "days_until_dormant": max(0, dormancy_threshold_days - person.dormancy_days),
+                "risk_level": "critical" if person.dormancy_days >= dormancy_threshold_days else "high" if person.dormancy_days >= dormancy_threshold_days * 3 // 4 else "medium",
             })
 
         projects_stmt = select(ProjectModel).where(
             and_(
                 ProjectModel.user_id == user_id,
                 ProjectModel.dormancy_days >= dormancy_threshold_days // 2,
-                ProjectModel.dormancy_days < dormancy_threshold_days,
                 ProjectModel.status == "active",
             )
         )
@@ -816,7 +815,8 @@ class ProfileMetricsExtractor(TimeSeriesExtractor):
                     if project.last_activity_at
                     else None
                 ),
-                "days_until_dormant": dormancy_threshold_days - project.dormancy_days,
+                "days_until_dormant": max(0, dormancy_threshold_days - project.dormancy_days),
+                "risk_level": "critical" if project.dormancy_days >= dormancy_threshold_days else "high" if project.dormancy_days >= dormancy_threshold_days * 3 // 4 else "medium",
             })
 
         at_risk.sort(key=lambda x: x["days_until_dormant"])

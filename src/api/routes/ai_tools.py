@@ -10,7 +10,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import and_, desc, or_, select
 
+from src.application.usecases.search_thoughts_usecase import SearchThoughtsUseCase
 from src.infrastructure.repositories.context_event_repository import ContextEventRepository
 from src.infrastructure.middleware.authentication_middleware import AuthenticationMiddleware
 from src.infrastructure.llm.llm_service import LLMService
@@ -137,6 +139,7 @@ def create_ai_tools_router(
     context_repo: ContextEventRepository,
     llm_service: LLMService,
     auth_middleware: AuthenticationMiddleware,
+    search_use_case: Optional[SearchThoughtsUseCase] = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/tools", tags=["tools"])
 
@@ -369,78 +372,144 @@ Today: {datetime.now().isoformat()[:10]}"""
         req: AskRequest,
         user: User = Depends(auth_middleware.require_authentication),
     ):
-        """RAG search: answer a question using the entire context graph."""
+        """Answer a question using vector search (when configured), vault notes, and context events."""
         query_lower = req.query.lower()
         keywords = [w for w in query_lower.split() if len(w) > 3]
 
-        # Search events by content match + entity match
-        all_events = await context_repo.get_events(user_id=user.id, limit=500)
-        people = await context_repo.get_people(user.id, limit=100)
+        sources: List[Dict[str, Any]] = []
 
-        scored: List[Dict[str, Any]] = []
-        for evt in all_events:
-            content = (evt.content or "").lower()
-            if not content:
-                continue
+        if search_use_case is not None:
+            try:
+                search_response = await search_use_case.execute(req.query, user.id)
+                for sr in search_response.results[:15]:
+                    thought = sr.thought
+                    content = thought.content or ""
+                    title = (
+                        ", ".join(thought.metadata.tags[:3])
+                        if thought.metadata.tags
+                        else (content[:80] + "…" if len(content) > 80 else content or "Thought")
+                    )
+                    sources.append({
+                        "event_id": str(thought.id),
+                        "source": "semantic_search",
+                        "content_preview": content[:300],
+                        "full_content": content[:1000],
+                        "relevance": round(min(1.0, float(sr.score.final_score)), 3),
+                        "title": title,
+                    })
+            except Exception:
+                pass
 
-            score = 0.0
-            # Keyword match
-            for kw in keywords:
-                if kw in content:
-                    score += 0.3
+        # 1. Search vault notes for relevant content
+        try:
+            from src.infrastructure.database.models import VaultNoteModel
 
-            # Entity match (people mentioned in query)
-            for p in people:
-                if p.name.lower() in query_lower and p.name.lower() in content:
-                    score += 0.5
+            async with context_repo._database.session() as session:
+                conditions = [
+                    VaultNoteModel.user_id == user.id,
+                ]
+                if keywords:
+                    kw_filters = [
+                        VaultNoteModel.content.ilike(f"%{kw}%")
+                        for kw in keywords[:5]
+                    ]
+                    conditions.append(or_(*kw_filters))
 
-            # Topic match
-            for t in (evt.topics or []):
-                if t.lower() in query_lower:
-                    score += 0.4
+                stmt = (
+                    select(VaultNoteModel)
+                    .where(and_(*conditions))
+                    .order_by(desc(VaultNoteModel.updated_at))
+                    .limit(10)
+                )
+                result = await session.execute(stmt)
+                notes = result.scalars().all()
 
-            if score > 0:
-                scored.append({
-                    "event": evt,
-                    "event_id": str(evt.id),
-                    "source": evt.source,
-                    "content_preview": (evt.content or "")[:200],
-                    "relevance": round(min(1.0, score), 3),
-                })
+                for note in notes:
+                    content = note.content or ""
+                    relevance = sum(0.2 for kw in keywords if kw in content.lower())
+                    sources.append({
+                        "event_id": str(note.id),
+                        "source": "vault_note",
+                        "content_preview": content[:300],
+                        "full_content": content[:1000],
+                        "relevance": round(min(1.0, relevance + 0.3), 3),
+                        "title": note.title,
+                    })
+        except Exception:
+            pass
 
-        scored.sort(key=lambda x: x["relevance"], reverse=True)
-        top = scored[: req.limit]
+        # 2. Search context events
+        try:
+            events = await context_repo.get_events(user_id=user.id, limit=200)
+            people = await context_repo.get_people(user.id, limit=50)
 
-        sources = [
+            for evt in events:
+                content = (evt.content or "").lower()
+                if not content:
+                    continue
+
+                score = 0.0
+                for kw in keywords:
+                    if kw in content:
+                        score += 0.2
+
+                for p in people:
+                    if p.name.lower() in query_lower and p.name.lower() in content:
+                        score += 0.4
+
+                for t in (evt.topics or []):
+                    if t.lower() in query_lower:
+                        score += 0.3
+
+                if score > 0:
+                    sources.append({
+                        "event_id": str(evt.id),
+                        "source": evt.source,
+                        "content_preview": (evt.content or "")[:300],
+                        "full_content": (evt.content or "")[:1000],
+                        "relevance": round(min(1.0, score), 3),
+                    })
+        except Exception:
+            pass
+
+        # Sort by relevance and take top results
+        sources.sort(key=lambda x: x["relevance"], reverse=True)
+        top_sources = sources[: req.limit]
+
+        response_sources = [
             SourceItem(
                 event_id=item["event_id"],
                 source=item["source"],
                 content_preview=item["content_preview"],
                 relevance=item["relevance"],
             )
-            for item in top
+            for item in top_sources
         ]
 
-        if not top:
+        if not top_sources:
             return AskResponse(
-                answer="I couldn't find any relevant context to answer your question.",
+                answer="I couldn't find any relevant context to answer your question. Try rephrasing or adding more details.",
                 sources=[],
             )
 
-        # Build context for LLM
-        context_text = "\n\n".join(
-            f"[{item['source']}] {(item['event'].content or '')[:300]}"
-            for item in top[:10]
-        )
-        prompt = f"Question: {req.query}\n\nContext:\n{context_text}"
+        # Build rich context for LLM
+        context_parts = []
+        for i, item in enumerate(top_sources[:10], 1):
+            source_label = item.get("title", item["source"])
+            context_parts.append(
+                f"[Source {i}: {source_label}]\n{item.get('full_content', item['content_preview'])}"
+            )
+
+        context_text = "\n\n---\n\n".join(context_parts)
+        prompt = f"Question: {req.query}\n\nContext from your knowledge base:\n\n{context_text}"
 
         try:
             raw = await llm_service.generate(prompt, system_prompt=ASK_SYSTEM)
             data = json.loads(raw)
             answer = data.get("answer", "Could not generate an answer.")
         except Exception:
-            answer = f"Found {len(top)} relevant events but could not generate an answer."
+            answer = f"Found {len(top_sources)} relevant sources but could not generate an answer."
 
-        return AskResponse(answer=answer, sources=sources)
+        return AskResponse(answer=answer, sources=response_sources)
 
     return router

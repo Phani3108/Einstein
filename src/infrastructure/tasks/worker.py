@@ -32,6 +32,7 @@ NUDGE_INTERVAL = 7200          # 2 hours
 FOLLOWUP_INTERVAL = 1800       # 30 minutes
 BRIEFING_INTERVAL = 3600       # 1 hour
 PATTERN_INTERVAL = 604800      # Weekly
+CONNECTOR_SYNC_INTERVAL = 900  # 15 minutes
 
 
 def _create_services():
@@ -85,6 +86,9 @@ try:
                     ctx["redis"] = aioredis.from_url(redis_url)
                 except Exception as e:
                     logger.warning("Redis not available for workers: %s", e)
+            from src.infrastructure.repositories.context_event_repository import ContextEventRepository
+            ctx["context_repo"] = ContextEventRepository(database)
+            ctx["user_id"] = os.getenv("EINSTEIN_USER_ID", "60bd95e0-1d86-49a0-99c4-1b72773ba450")
             logger.info("Worker started")
 
         @staticmethod
@@ -99,11 +103,13 @@ try:
         from src.infrastructure.tasks.followup_detector import followup_detection_task
         from src.infrastructure.tasks.briefing_worker import briefing_task
         from src.infrastructure.tasks.pattern_report_worker import pattern_report_task
+        from src.infrastructure.connectors.connector_sync_worker import sync_integrations as connector_sync_task
 
         functions = [
             tier1_task, tier2_task, connection_task, insight_task,
             _prediction_task_wrapper,
             nudge_task, followup_detection_task, briefing_task, pattern_report_task,
+            connector_sync_task,
         ]
 
         cron_jobs = [
@@ -116,6 +122,7 @@ try:
             cron(followup_detection_task, minute={15, 45}),
             cron(briefing_task, minute=5),
             cron(pattern_report_task, weekday=6, hour=0, minute=0),
+            cron(connector_sync_task, minute={10, 25, 40, 55}),
         ]
 
 except ImportError:
@@ -138,6 +145,7 @@ async def run_standalone():
     from src.infrastructure.tasks.followup_detector import followup_detection_task
     from src.infrastructure.tasks.briefing_worker import briefing_task
     from src.infrastructure.tasks.pattern_report_worker import pattern_report_task
+    from src.infrastructure.connectors.connector_sync_worker import sync_integrations as connector_sync_task
 
     database, embedding_service, llm_service = _create_services()
 
@@ -150,11 +158,16 @@ async def run_standalone():
         except Exception as e:
             logger.warning("Redis not available: %s", e)
 
+    from src.infrastructure.repositories.context_event_repository import ContextEventRepository
+    context_repo = ContextEventRepository(database)
+
     ctx = {
         "database": database,
         "embedding_service": embedding_service,
         "llm_service": llm_service,
         "redis": redis_client,
+        "context_repo": context_repo,
+        "user_id": os.getenv("EINSTEIN_USER_ID", "60bd95e0-1d86-49a0-99c4-1b72773ba450"),
     }
 
     logger.info("Starting standalone worker loop")
@@ -168,6 +181,7 @@ async def run_standalone():
     last_followup = datetime.min
     last_briefing = datetime.min
     last_pattern = datetime.min
+    last_connector_sync = datetime.min
 
     while True:
         now = datetime.now()
@@ -224,6 +238,14 @@ async def run_standalone():
                 result = await pattern_report_task(ctx)
                 logger.info("Pattern report: %s", result)
                 last_pattern = now
+
+            if (now - last_connector_sync).total_seconds() >= CONNECTOR_SYNC_INTERVAL:
+                try:
+                    result = await connector_sync_task(ctx)
+                    logger.info("Connector sync: %s", result)
+                except Exception as e:
+                    logger.warning("Connector sync skipped: %s", e)
+                last_connector_sync = now
 
         except Exception as e:
             logger.error("Worker loop error: %s", e, exc_info=True)

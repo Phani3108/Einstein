@@ -238,7 +238,11 @@ function App() {
         <div className="center-panel">
           {renderMainContent()}
         </div>
-        {showContextPanel && <ErrorBoundary name="ContextPanel"><ContextPanel /></ErrorBoundary>}
+        {showContextPanel && (
+          state.activeNoteId
+            ? <ErrorBoundary name="RightPanel"><RightPanel /></ErrorBoundary>
+            : <ErrorBoundary name="ContextPanel"><ContextPanel /></ErrorBoundary>
+        )}
       </div>
       <ErrorBoundary name="CommandPalette"><CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} /></ErrorBoundary>
       <SearchModal />

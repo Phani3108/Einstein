@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useApp } from "../lib/store";
 import { api } from "../lib/api";
 import { createNoteAndProcess } from "../lib/dataPipeline";
@@ -934,9 +934,17 @@ export function InsightsDashboard() {
 
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [refreshing, setRefreshing] = useState(false);
+  const [patternReport, setPatternReport] = useState<any>(null);
 
   // Client-side analysis (memoized)
   const analysis = useMemo(() => analyzeNotes(notes), [notes]);
+
+  // Load pattern report
+  useEffect(() => {
+    api.getPatterns()
+      .then(data => setPatternReport(data))
+      .catch(() => setPatternReport(null));
+  }, []);
 
   // Backend intelligence data from store
   const briefing = state.morningBriefing;
@@ -1413,6 +1421,29 @@ export function InsightsDashboard() {
                     </p>
                   )}
                 </InsightCard>
+
+                {/* Weekly Patterns */}
+                {patternReport && (
+                  <InsightCard
+                    icon={<TrendingUp size={18} />}
+                    title="Weekly Patterns"
+                    accentColor="#06b6d4"
+                  >
+                    {patternReport.top_topics?.length > 0 && (
+                      <div className="id-pattern-section">
+                        <h4>Top Topics</h4>
+                        <div className="id-topic-list">
+                          {patternReport.top_topics.slice(0, 8).map((t: any, i: number) => (
+                            <div key={i} className="id-topic-item">
+                              <span className="id-topic-name">{t.topic || t.name || t}</span>
+                              {t.count && <span className="id-topic-count">{t.count}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </InsightCard>
+                )}
               </div>
             )}
           </>
@@ -2278,6 +2309,37 @@ export function InsightsDashboard() {
         .pred-rel-type { font-size: 0.68rem; color: var(--text-muted, #71717a); text-transform: uppercase; }
         .pred-rel-days { font-size: 0.75rem; color: var(--text-muted, #71717a); }
         .pred-rel-risk { font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: rgba(239,68,68,0.15); color: #ef4444; font-weight: 600; }
+
+        /* Pattern report */
+        .id-pattern-section h4 {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-muted, #94a3b8);
+          text-transform: uppercase;
+          margin: 8px 0 4px;
+        }
+        .id-topic-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .id-topic-item {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 10px;
+          background: var(--bg-primary, #1e1e2e);
+          border-radius: 12px;
+          font-size: 12px;
+          color: var(--text-primary, #e4e4e7);
+        }
+        .id-topic-count {
+          font-size: 10px;
+          color: var(--text-muted, #71717a);
+          background: var(--border, #27272a);
+          padding: 1px 5px;
+          border-radius: 8px;
+        }
 
         /* Responsive */
         @media (max-width: 700px) {

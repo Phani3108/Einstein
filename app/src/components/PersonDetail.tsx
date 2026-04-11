@@ -55,6 +55,16 @@ export function PersonDetail({ personId }: { personId: string }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [intelligence, setIntelligence] = useState<PersonIntelligence | null>(null);
   const [intelLoading, setIntelLoading] = useState(false);
+  const [relScore, setRelScore] = useState<any>(null);
+
+  // Load relationship health score
+  useEffect(() => {
+    if (personId) {
+      api.getRelationshipScore(personId)
+        .then(data => setRelScore(data))
+        .catch(() => setRelScore(null));
+    }
+  }, [personId]);
 
   // Load person intelligence (dossier) from cloud API
   useEffect(() => {
@@ -659,6 +669,40 @@ export function PersonDetail({ personId }: { personId: string }) {
         .prd-spin {
           animation: prd-spin-anim 1s linear infinite;
         }
+
+        .pd-rel-health {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-top: 8px;
+        }
+        .pd-rel-score-bar {
+          width: 100px;
+          height: 6px;
+          background: var(--border, #27272a);
+          border-radius: 3px;
+          overflow: hidden;
+        }
+        .pd-rel-fill {
+          height: 100%;
+          border-radius: 3px;
+          transition: width 0.3s;
+        }
+        .pd-rel-label {
+          font-size: 12px;
+          color: var(--text-muted, #71717a);
+          text-transform: capitalize;
+        }
+        .pd-rel-trend {
+          font-size: 11px;
+          font-weight: 600;
+        }
+        .pd-rel-declining {
+          color: #ef4444;
+        }
+        .pd-rel-improving {
+          color: #22c55e;
+        }
       `}</style>
 
       {/* Header */}
@@ -765,6 +809,16 @@ export function PersonDetail({ personId }: { personId: string }) {
                 <Calendar size={14} />
                 Last contact: {formatDate(person.last_contact)}
               </span>
+            </div>
+          )}
+          {!editing && relScore && (
+            <div className="pd-rel-health">
+              <div className="pd-rel-score-bar">
+                <div className="pd-rel-fill" style={{ width: `${relScore.score}%`, background: relScore.score > 70 ? '#22c55e' : relScore.score > 40 ? '#f59e0b' : '#ef4444' }} />
+              </div>
+              <span className="pd-rel-label">{relScore.grade} ({relScore.score}/100)</span>
+              {relScore.trend === "declining" && <span className="pd-rel-trend pd-rel-declining">↓ declining</span>}
+              {relScore.trend === "improving" && <span className="pd-rel-trend pd-rel-improving">↑ improving</span>}
             </div>
           )}
         </div>

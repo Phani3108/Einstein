@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useApp } from "../lib/store";
 import { api } from "../lib/api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -15,6 +15,15 @@ export function CalendarView() {
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+
+  useEffect(() => {
+    const start = new Date(year, month, 1).toISOString().slice(0, 10);
+    const end = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+    api.getCalendarEvents(start, end)
+      .then(setCalendarEvents)
+      .catch(() => setCalendarEvents([]));
+  }, [month, year]);
 
   // Get all daily notes mapped by date string
   const dailyNotes = useMemo(() => {
@@ -187,6 +196,14 @@ export function CalendarView() {
                 {noteCount > 0 && !hasDaily && (
                   <div className="calendar-count">{noteCount}</div>
                 )}
+                {calendarEvents
+                  .filter(ev => ev.event_date?.startsWith(day.dateStr))
+                  .map(ev => (
+                    <div key={ev.id} className="cal-event-dot" title={ev.title}>
+                      {ev.title.slice(0, 15)}
+                    </div>
+                  ))
+                }
               </div>
             );
           })}

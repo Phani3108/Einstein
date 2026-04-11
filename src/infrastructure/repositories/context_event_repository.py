@@ -145,6 +145,46 @@ class ContextEventRepository:
             result = await session.execute(stmt)
             return result.scalar() or 0
 
+    async def query_events(
+        self,
+        user_id: UUID,
+        event_types: Optional[List[str]] = None,
+        sources: Optional[List[str]] = None,
+        person_name: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+        limit: int = 200,
+    ) -> List[ContextEvent]:
+        """Flexible event query used by intelligence workers.
+
+        Supports filtering by event type, source, mentioned people,
+        topics, and date range.
+        """
+        async with self._database.session() as session:
+            stmt = select(ContextEventModel).where(
+                ContextEventModel.user_id == user_id
+            )
+            if event_types:
+                stmt = stmt.where(ContextEventModel.event_type.in_(event_types))
+            if sources:
+                stmt = stmt.where(ContextEventModel.source.in_(sources))
+            if person_name:
+                stmt = stmt.where(
+                    ContextEventModel.extracted_people.any(person_name)
+                )
+            if topics:
+                stmt = stmt.where(
+                    ContextEventModel.topics.overlap(topics)
+                )
+            if since:
+                stmt = stmt.where(ContextEventModel.timestamp >= since)
+            if until:
+                stmt = stmt.where(ContextEventModel.timestamp <= until)
+            stmt = stmt.order_by(desc(ContextEventModel.timestamp)).limit(limit)
+            result = await session.execute(stmt)
+            return [row.to_domain() for row in result.scalars().all()]
+
     # ---- Connections ----
 
     async def create_connection(self, conn: Connection) -> Connection:

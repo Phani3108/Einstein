@@ -205,7 +205,9 @@ def create_integrations_router(
             await context_repo.ingest_batch(domain_events)
 
         # Update last_sync_at
-        await context_repo.update_sync_cursor(user.id, provider, datetime.now())
+        await context_repo.update_sync_cursor(
+            user.id, provider, cursor=None, last_sync_at=datetime.now()
+        )
 
         return SyncResponse(provider=provider, events_fetched=len(events))
 

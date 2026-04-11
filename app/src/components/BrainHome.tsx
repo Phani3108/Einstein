@@ -17,7 +17,7 @@ import {
   Home, Target, Users, Scale, CheckSquare, Calendar, Clock,
   AlertTriangle, TrendingUp, FileText, Plus, ChevronRight,
   Brain, Sun, Moon, Coffee, Loader, Sparkles, Save, Send,
-  Eye, Zap, Archive,
+  Eye, Zap, Archive, Newspaper, CalendarDays, Bell, Heart,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -79,6 +79,11 @@ export function BrainHome() {
   const [staleNotes, setStaleNotes] = useState<Note[]>([]);
   const [prepPack, setPrepPack] = useState<PrepPack | null>(null);
   const [prepLoading, setPrepLoading] = useState(false);
+  const [morningBriefing, setMorningBriefing] = useState<any>(null);
+  const [morningBriefingLoading, setMorningBriefingLoading] = useState(false);
+  const [meetingPreps, setMeetingPreps] = useState<any[]>([]);
+  const [followUps, setFollowUps] = useState<any[]>([]);
+  const [relationshipDashboard, setRelationshipDashboard] = useState<any>(null);
 
   const greeting = useMemo(() => getGreeting(), []);
   const today = useMemo(() => new Date().toLocaleDateString("en-US", {
@@ -88,6 +93,36 @@ export function BrainHome() {
   // --- Load stale notes from DB ---
   useEffect(() => {
     api.getStaleNotes(14).then(setStaleNotes).catch(() => setStaleNotes([]));
+  }, []);
+
+  // --- Load morning briefing ---
+  useEffect(() => {
+    setMorningBriefingLoading(true);
+    api.getMorningBriefing()
+      .then(data => setMorningBriefing(data))
+      .catch(() => setMorningBriefing(null))
+      .finally(() => setMorningBriefingLoading(false));
+  }, []);
+
+  // --- Load meeting preps ---
+  useEffect(() => {
+    api.getUpcomingBriefings()
+      .then(data => setMeetingPreps(data || []))
+      .catch(() => setMeetingPreps([]));
+  }, []);
+
+  // --- Load follow-ups ---
+  useEffect(() => {
+    api.getFollowUps()
+      .then(data => setFollowUps(data || []))
+      .catch(() => setFollowUps([]));
+  }, []);
+
+  // --- Load relationship dashboard ---
+  useEffect(() => {
+    api.getRelationshipDashboard()
+      .then(data => setRelationshipDashboard(data))
+      .catch(() => setRelationshipDashboard(null));
   }, []);
 
   // --- Prepare for Today ---
@@ -355,6 +390,107 @@ export function BrainHome() {
 
       {/* --- Main Grid --- */}
       <div className="bh-grid">
+        {/* Morning Briefing */}
+        {morningBriefing && (
+          <div className="bh-card bh-card-wide bh-briefing-card">
+            <div className="bh-card-header">
+              <Newspaper size={16} />
+              <h3>Morning Briefing</h3>
+            </div>
+            <div className="bh-briefing-content">
+              {morningBriefing.summary && <p className="bh-briefing-summary">{morningBriefing.summary}</p>}
+              {morningBriefing.highlights?.length > 0 && (
+                <div className="bh-briefing-section">
+                  <h4>Highlights</h4>
+                  <ul>{morningBriefing.highlights.map((h: string, i: number) => <li key={i}>{h}</li>)}</ul>
+                </div>
+              )}
+              {morningBriefing.attention_needed?.length > 0 && (
+                <div className="bh-briefing-section">
+                  <h4>Needs Attention</h4>
+                  <ul>{morningBriefing.attention_needed.map((a: string, i: number) => <li key={i}>{a}</li>)}</ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Upcoming Meetings */}
+        {meetingPreps.length > 0 && (
+          <div className="bh-card">
+            <div className="bh-card-header">
+              <CalendarDays size={16} />
+              <h3>Upcoming Meetings</h3>
+            </div>
+            <div className="bh-meetings-list">
+              {meetingPreps.slice(0, 3).map((m: any, i: number) => (
+                <div key={i} className="bh-meeting-item">
+                  <div className="bh-meeting-title">{m.meeting_title}</div>
+                  <div className="bh-meeting-time">{m.meeting_time}</div>
+                  {m.attendees?.length > 0 && (
+                    <div className="bh-meeting-attendees">
+                      {m.attendees.map((a: any, j: number) => (
+                        <span key={j} className="bh-attendee-badge">{a.name}</span>
+                      ))}
+                    </div>
+                  )}
+                  {m.suggested_agenda?.length > 0 && (
+                    <div className="bh-meeting-agenda">
+                      {m.suggested_agenda.slice(0, 3).map((a: string, j: number) => (
+                        <div key={j} className="bh-agenda-item">{a}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Follow-ups */}
+        {followUps.length > 0 && (
+          <div className="bh-card">
+            <div className="bh-card-header">
+              <Bell size={16} />
+              <h3>Follow-ups ({followUps.length})</h3>
+            </div>
+            <div className="bh-followups-list">
+              {followUps.slice(0, 5).map((f: any, i: number) => (
+                <div key={i} className={`bh-followup-item bh-followup--${f.priority || 'medium'}`}>
+                  <div className="bh-followup-title">{f.title}</div>
+                  <div className="bh-followup-desc">{f.description}</div>
+                  {f.person && <span className="bh-followup-person">{f.person}</span>}
+                  <div className="bh-followup-action">{f.suggested_action}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Relationships Needing Attention */}
+        {relationshipDashboard?.declining?.length > 0 && (
+          <div className="bh-card">
+            <div className="bh-card-header">
+              <Heart size={16} />
+              <h3>Relationships Needing Attention</h3>
+            </div>
+            <div className="bh-relationships-list">
+              {relationshipDashboard.declining.slice(0, 5).map((r: any, i: number) => (
+                <div key={i} className="bh-relationship-item" onClick={() => {
+                  if (r.person_id) dispatch({ type: "SET_CONTEXT_MODE", payload: { type: "person", id: r.person_id } });
+                }}>
+                  <div className="bh-rel-name">{r.person_name}</div>
+                  <div className="bh-rel-score">
+                    <div className="bh-rel-bar" style={{ width: `${r.score}%` }} />
+                    <span>{r.score}/100</span>
+                  </div>
+                  <div className="bh-rel-grade">{r.grade}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Today's Focus */}
         <div className="bh-card">
           <div className="bh-card-header">
@@ -1177,6 +1313,190 @@ export function BrainHome() {
           to { transform: rotate(360deg); }
         }
         .bh-spin { animation: bh-spin 1s linear infinite; }
+
+        .bh-briefing-card {
+          background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+          border: 1px solid #334155;
+        }
+        .bh-briefing-content {
+          padding: 12px 16px;
+        }
+        .bh-briefing-content .bh-briefing-summary {
+          font-size: 14px;
+          color: var(--text-primary, #e4e4e7);
+          line-height: 1.6;
+          margin-bottom: 12px;
+        }
+        .bh-briefing-content .bh-briefing-section h4 {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-muted, #94a3b8);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin: 8px 0 4px;
+        }
+        .bh-briefing-content .bh-briefing-section ul {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+        .bh-briefing-content .bh-briefing-section li {
+          font-size: 13px;
+          color: var(--text-primary, #e4e4e7);
+          padding: 3px 0;
+          padding-left: 12px;
+          position: relative;
+        }
+        .bh-briefing-content .bh-briefing-section li::before {
+          content: "•";
+          position: absolute;
+          left: 0;
+          color: #60a5fa;
+        }
+
+        .bh-meetings-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          padding: 12px 16px;
+        }
+        .bh-meeting-item {
+          padding: 10px;
+          background: var(--bg-primary, #1e1e2e);
+          border-radius: 8px;
+          border: 1px solid var(--border, #27272a);
+        }
+        .bh-meeting-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-primary, #e4e4e7);
+        }
+        .bh-meeting-time {
+          font-size: 12px;
+          color: var(--text-muted, #71717a);
+          margin-top: 2px;
+        }
+        .bh-meeting-attendees {
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+          margin-top: 6px;
+        }
+        .bh-attendee-badge {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 10px;
+          background: #3b82f620;
+          color: #60a5fa;
+        }
+        .bh-meeting-agenda {
+          margin-top: 6px;
+        }
+        .bh-agenda-item {
+          font-size: 12px;
+          color: var(--text-muted, #a1a1aa);
+          padding: 2px 0;
+          padding-left: 12px;
+          position: relative;
+        }
+        .bh-agenda-item::before {
+          content: "→";
+          position: absolute;
+          left: 0;
+          color: #22c55e;
+        }
+
+        .bh-followups-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 12px 16px;
+        }
+        .bh-followup-item {
+          padding: 10px;
+          background: var(--bg-primary, #1e1e2e);
+          border-radius: 8px;
+          border-left: 3px solid #71717a;
+        }
+        .bh-followup--high {
+          border-left-color: #f59e0b;
+        }
+        .bh-followup--urgent {
+          border-left-color: #ef4444;
+        }
+        .bh-followup-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--text-primary, #e4e4e7);
+        }
+        .bh-followup-desc {
+          font-size: 12px;
+          color: var(--text-muted, #a1a1aa);
+          margin-top: 2px;
+        }
+        .bh-followup-person {
+          display: inline-block;
+          font-size: 11px;
+          padding: 1px 6px;
+          border-radius: 8px;
+          background: #8b5cf620;
+          color: #a78bfa;
+          margin-top: 4px;
+        }
+        .bh-followup-action {
+          font-size: 12px;
+          color: #60a5fa;
+          margin-top: 4px;
+        }
+
+        .bh-relationships-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 12px 16px;
+        }
+        .bh-relationship-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 10px;
+          background: var(--bg-primary, #1e1e2e);
+          border-radius: 8px;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .bh-relationship-item:hover {
+          background: var(--bg-secondary, #27272a);
+        }
+        .bh-rel-name {
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--text-primary, #e4e4e7);
+          min-width: 120px;
+        }
+        .bh-rel-score {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .bh-rel-bar {
+          height: 4px;
+          background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e);
+          border-radius: 2px;
+          transition: width 0.3s;
+        }
+        .bh-rel-score span {
+          font-size: 11px;
+          color: var(--text-muted, #71717a);
+          min-width: 40px;
+        }
+        .bh-rel-grade {
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          color: var(--text-muted, #71717a);
+        }
       `}</style>
     </div>
   );

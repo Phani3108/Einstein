@@ -152,6 +152,18 @@ export function Editor() {
     pluginRegistry.emit("on_note_load", { note: activeNote });
   }, [activeNoteId, editor]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const handleVoiceInput = (e: Event) => {
+      const transcript = (e as CustomEvent).detail;
+      const text = typeof transcript === "string" ? transcript : transcript?.text;
+      if (text && editor) {
+        editor.chain().focus().insertContent(text + " ").run();
+      }
+    };
+    window.addEventListener("einstein-voice-input", handleVoiceInput);
+    return () => window.removeEventListener("einstein-voice-input", handleVoiceInput);
+  }, [editor]);
+
   const handleManualSave = useCallback(() => {
     if (!editor) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);

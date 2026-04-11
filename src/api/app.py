@@ -26,7 +26,7 @@ from src.api.routes.vault import create_vault_router
 from src.api.routes.integrations import create_integrations_router
 from src.api.routes.actions import create_actions_router
 from src.api.routes.intelligence import create_intelligence_router
-from src.infrastructure.connectors.webhook_router import router as webhook_router
+from src.infrastructure.connectors.webhook_router import create_webhook_router
 from src.api.error_handlers import (
     domain_exception_handler,
     http_exception_handler,
@@ -307,6 +307,7 @@ def create_app() -> FastAPI:
         context_repo=container.context_event_repository(),
         llm_service=container.llm_service(),
         auth_middleware=container.auth_middleware(),
+        search_use_case=container.search_thoughts_usecase(),
     )
     app.include_router(ai_tools_router)
 
@@ -340,6 +341,9 @@ def create_app() -> FastAPI:
     app.include_router(intelligence_router)
 
     # Webhook ingestion routes (Phase 1A)
+    webhook_router = create_webhook_router(
+        context_repo=container.context_event_repository(),
+    )
     app.include_router(webhook_router)
 
     # ── Dev seed endpoint ────────────────────────────────────────

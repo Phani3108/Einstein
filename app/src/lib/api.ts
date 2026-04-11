@@ -743,10 +743,10 @@ export const api = {
     request<any>(`${CLOUD_API}/api/v1/intelligence/relationships`),
 
   getRelationshipScore: (personId: string): Promise<any> =>
-    request<any>(`${CLOUD_API}/api/v1/intelligence/relationships/${encodeURIComponent(personId)}/score`),
+    request<any>(`${CLOUD_API}/api/v1/intelligence/relationships/${encodeURIComponent(personId)}`),
 
   getIntelligenceSummary: (): Promise<any> =>
-    request<any>(`${CLOUD_API}/api/v1/intelligence/summary`),
+    request<any>(`${CLOUD_API}/api/v1/intelligence/insights/summary`),
 
   // ─── Ask AI (Cloud RAG) ────────────────────────────
   askAI: (question: string): Promise<any> =>
@@ -759,7 +759,7 @@ export const api = {
   getActivityForecast: (days: number = 14): Promise<any> =>
     request<any>(`${CLOUD_API}/api/v1/predictions/activity/forecast`, {
       method: "POST",
-      body: JSON.stringify({ horizon_days: days }),
+      body: JSON.stringify({ horizon: days }),
     }),
 
   getEmergingEntities: (days: number = 30): Promise<any> =>

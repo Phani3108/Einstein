@@ -43,6 +43,7 @@ interface PaletteItem {
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { state, dispatch } = useApp();
   const [query, setQuery] = useState("");
+  const [serverResults, setServerResults] = useState<any[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -51,6 +52,19 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (query.length < 3) {
+      setServerResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api.searchNotes(query)
+        .then(results => setServerResults(results || []))
+        .catch(() => setServerResults([]));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   // Close on Escape
   useEffect(() => {
@@ -327,6 +341,22 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
               <span className="cmd-item-type">{item.type}</span>
             </button>
           ))}
+          {serverResults.length > 0 && (
+            <div className="cp-group">
+              <div className="cmd-section-label">Search Results</div>
+              {serverResults.map(note => (
+                <button key={note.id} className="cmd-item" onClick={() => {
+                  dispatch({ type: "SET_ACTIVE_NOTE", id: note.id });
+                  onClose();
+                }}>
+                  <span className="cmd-item-icon"><FileText size={14} /></span>
+                  <div className="cmd-item-text">
+                    <span className="cmd-item-title">{note.title}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="cmd-footer">
